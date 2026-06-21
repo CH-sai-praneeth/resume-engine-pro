@@ -2,6 +2,10 @@
 // MAIN APPLICATION ORCHESTRATION
 // ============================================================================
 
+// Guard against double-loading
+if (typeof window._scriptLoaded !== 'undefined') { } else {
+window._scriptLoaded = true;
+
 console.log('=== Resume Engine Pro Script Loaded ===');
 
 // Global error handler
@@ -671,4 +675,61 @@ function handleResumeUpload(event) {
 // RESUME GENERATION HANDLERS
 // ============================================================================
 
-function generateSingleResume() {\n    const profileSelect = document.querySelector('select[value]');\n    if (!profileSelect || profileSelect.value === '' || profileSelect.value === '-- Select a profile --') {\n        alert('Please select a profile first');\n        return;\n    }\n    alert('Resume generation started... (Feature coming soon)');\n}\n\nfunction generateBulkResumes() {\n    alert('Bulk generation feature coming soon');\n}\n\n// ============================================================================\n// GENERATOR MODE HANDLERS\n// ============================================================================\n\nfunction switchGeneratorMode(mode) {\n    // Hide all modes\n    document.getElementById('singleMode').style.display = 'none';\n    document.getElementById('bulkMode').style.display = 'none';\n    \n    // Remove active class from buttons\n    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));\n    \n    // Show selected mode\n    if (mode === 'single') {\n        document.getElementById('singleMode').style.display = 'block';\n        document.querySelector('.mode-btn:first-of-type').classList.add('active');\n    } else if (mode === 'bulk') {\n        document.getElementById('bulkMode').style.display = 'block';\n        document.querySelector('.mode-btn:nth-of-type(2)').classList.add('active');\n    }\n}\n\nfunction switchJDInput(type) {\n    document.getElementById('pasteJD').style.display = 'none';\n    document.getElementById('urlJD').style.display = 'none';\n    \n    document.querySelectorAll('.input-tab').forEach(btn => btn.classList.remove('active'));\n    \n    if (type === 'paste') {\n        document.getElementById('pasteJD').style.display = 'block';\n        event.target.classList.add('active');\n    } else if (type === 'url') {\n        document.getElementById('urlJD').style.display = 'block';\n        event.target.classList.add('active');\n    }\n}\n\nfunction loadProfileData() {\n    const select = document.getElementById('selectProfile');\n    if (select && select.value) {\n        console.log('Loading profile:', select.value);\n    }\n}
+function generateSingleResume() {
+    const profileSelect = document.querySelector('select[value]');
+    if (!profileSelect || profileSelect.value === '' || profileSelect.value === '-- Select a profile --') {
+        alert('Please select a profile first');
+        return;
+    }
+    alert('Resume generation started... (Feature coming soon)');
+}
+
+function generateBulkResumes() {
+    alert('Bulk generation feature coming soon');
+}
+
+// ============================================================================
+// GENERATOR MODE HANDLERS
+// ============================================================================
+
+function switchGeneratorMode(mode) {
+    // Hide all modes
+    document.getElementById('singleMode').style.display = 'none';
+    document.getElementById('bulkMode').style.display = 'none';
+    
+    // Remove active class from buttons
+    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // Show selected mode
+    if (mode === 'single') {
+        document.getElementById('singleMode').style.display = 'block';
+        document.querySelector('.mode-btn:first-of-type').classList.add('active');
+    } else if (mode === 'bulk') {
+        document.getElementById('bulkMode').style.display = 'block';
+        document.querySelector('.mode-btn:nth-of-type(2)').classList.add('active');
+    }
+}
+
+function switchJDInput(type) {
+    document.getElementById('pasteJD').style.display = 'none';
+    document.getElementById('urlJD').style.display = 'none';
+    
+    document.querySelectorAll('.input-tab').forEach(btn => btn.classList.remove('active'));
+    
+    if (type === 'paste') {
+        document.getElementById('pasteJD').style.display = 'block';
+        event.target.classList.add('active');
+    } else if (type === 'url') {
+        document.getElementById('urlJD').style.display = 'block';
+        event.target.classList.add('active');
+    }
+}
+
+function loadProfileData() {
+    const select = document.getElementById('selectProfile');
+    if (select && select.value) {
+        console.log('Loading profile:', select.value);
+    }
+}
+
+}

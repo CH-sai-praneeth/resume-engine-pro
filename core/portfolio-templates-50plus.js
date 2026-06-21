@@ -2,6 +2,8 @@
 // PORTFOLIO TEMPLATES - 50+ Professional Portfolio Styles
 // ============================================================================
 
+if (typeof window.PortfolioTemplates50Plus !== 'undefined') { } else {
+
 const PortfolioTemplates50Plus = {
     styles: [
         // MINIMALIST SERIES (5)
@@ -346,3 +348,5 @@ const PortfolioTemplates50Plus = {
 };
 
 window.PortfolioTemplates50Plus = PortfolioTemplates50Plus;
+
+}

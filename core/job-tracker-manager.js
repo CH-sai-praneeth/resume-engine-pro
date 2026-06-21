@@ -1,6 +1,7 @@
 // ============================================================================
 // JOB TRACKER MANAGER - Job application & networking contact management
 // ============================================================================
+if (typeof window.JobTrackerManager !== 'undefined') { } else {
 
 const JobTrackerManager = {
     APP_KEY: 'resumeEngineProV1_applications',
@@ -287,3 +288,5 @@ const JobTrackerManager = {
 };
 
 window.JobTrackerManager = JobTrackerManager;
+
+}

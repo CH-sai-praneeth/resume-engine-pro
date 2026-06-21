@@ -2,6 +2,8 @@
 // PROFILE MANAGER - Handle user resume profiles
 // ============================================================================
 
+if (typeof window.ProfileManager !== 'undefined') { } else {
+
 const ProfileManager = {
     async parseResume(file) {
         const text = await file.text();
@@ -81,3 +83,5 @@ const ProfileManager = {
 };
 
 window.ProfileManager = ProfileManager;
+
+}

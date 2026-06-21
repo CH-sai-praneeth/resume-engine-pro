@@ -1,6 +1,7 @@
 // ============================================================================
 // PORTFOLIO TEMPLATES - Pre-designed portfolio templates
 // ============================================================================
+if (typeof window.PortfolioTemplates !== 'undefined') { } else {
 
 const PortfolioTemplates = {
     templates: [
@@ -133,3 +134,5 @@ const PortfolioTemplates = {
 };
 
 window.PortfolioTemplates = PortfolioTemplates;
+
+}

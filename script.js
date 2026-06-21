@@ -35,12 +35,24 @@ function showPage(pageName) {
 }
 
 function switchMainTab(tabName) {
+    // Remove active class from all buttons and content
     document.querySelectorAll('.main-tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.main-tab-content').forEach(tab => tab.classList.remove('active'));
     
-    event.target.classList.add('active');
+    // Find and activate the clicked button
+    const buttons = document.querySelectorAll('.main-tab-btn');
+    buttons.forEach(btn => {
+        if (btn.textContent.includes(tabName.charAt(0).toUpperCase() + tabName.slice(1)) || 
+            btn.onclick.toString().includes(`'${tabName}'`)) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Activate the content tab
     const content = document.getElementById(tabName);
-    if (content) content.classList.add('active');
+    if (content) {
+        content.classList.add('active');
+    }
     
     // Initialize tracker when switching to applications tab
     if (tabName === 'applications' && window.initializeTracker) {
@@ -409,6 +421,22 @@ function closeSettings() {
     const modal = document.getElementById('settingsModal');
     if (modal) modal.style.display = 'none';
 }
+
+function toggleSettingsMenu() {
+    const menu = document.getElementById('settingsMenu');
+    if (menu) {
+        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+// Close settings menu when clicking outside
+window.addEventListener('click', (e) => {
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsMenu = document.getElementById('settingsMenu');
+    if (settingsMenu && !settingsMenu.contains(e.target) && !settingsBtn.contains(e.target)) {
+        settingsMenu.style.display = 'none';
+    }
+});
 
 // ============================================================================
 // EVENT LISTENERS

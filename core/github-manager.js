@@ -2,12 +2,13 @@
 // GITHUB MANAGER - Handle GitHub API operations (using direct fetch API)
 // ============================================================================
 
-const GitHubManager = {
-    token: null,
-    user: null,
-    baseUrl: 'https://api.github.com',
-    
-    // ========================================================================
+if (!window.GitHubManager) {
+    window.GitHubManager = {
+        token: null,
+        user: null,
+        baseUrl: 'https://api.github.com',
+        
+        // ========================================================================
     // AUTHENTICATION
     // ========================================================================
     
@@ -381,3 +382,4 @@ const GitHubManager = {
         }
     }
 };
+}

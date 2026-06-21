@@ -2,14 +2,12 @@
 // STORAGE MANAGER - Handle LocalStorage, Encryption, and Syncing
 // ============================================================================
 
-// Prevent duplicate module loads
-if (!window.StorageManager) {
-    window.StorageManager = {
-        PREFIX: 'resumeEngineProV1_',
-        
-        // ========================================================================
-        // BASIC STORAGE OPERATIONS
-        // ========================================================================
+const StorageManager = {
+    PREFIX: 'resumeEngineProV1_',
+    
+    // ========================================================================
+    // BASIC STORAGE OPERATIONS
+    // ========================================================================
     
     set(key, value, encrypt = false) {
         try {
@@ -254,7 +252,6 @@ if (!window.StorageManager) {
         return (total / 1024 / 1024).toFixed(2) + ' MB';
     }
 };
-}
 
 // Export for use
 if (typeof module !== 'undefined' && module.exports) {

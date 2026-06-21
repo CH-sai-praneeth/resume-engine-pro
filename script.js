@@ -30,7 +30,7 @@ async function initializeApp() {
 
 function showPage(pageName) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    const page = document.getElementById(`${pageName}Page`);
+    const page = document.getElementById(pageName);
     if (page) page.classList.add('active');
 }
 

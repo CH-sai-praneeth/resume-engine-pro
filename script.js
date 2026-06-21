@@ -90,6 +90,28 @@ function handleLogout() {
 }
 
 // ============================================================================
+// UI UPDATES
+// ============================================================================
+
+function updateUI() {
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userDisplay = document.getElementById('userDisplay');
+    
+    if (currentUser || GitHubManager.isAuthenticated()) {
+        // User is logged in
+        if (loginBtn) loginBtn.style.display = 'none';
+        if (logoutBtn) logoutBtn.style.display = 'block';
+        if (userDisplay) userDisplay.textContent = `👤 ${GitHubManager.getUsername() || 'User'}`;
+    } else {
+        // User is logged out
+        if (loginBtn) loginBtn.style.display = 'block';
+        if (logoutBtn) logoutBtn.style.display = 'none';
+        if (userDisplay) userDisplay.textContent = '';
+    }
+}
+
+// ============================================================================
 // PROFILE MANAGEMENT
 // ============================================================================
 

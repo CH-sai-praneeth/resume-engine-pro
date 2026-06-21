@@ -8,9 +8,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     
     <!-- External Libraries -->
-    <!-- Octokit for GitHub API -->
-    <script src="https://cdn.jsdelivr.net/npm/octokit@latest/dist/umd/octokit.min.js"></script>
-    
     <!-- PDF.js for PDF parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
@@ -52,8 +49,8 @@
             <div class="nav-right">
                 <span id="userDisplay" class="user-display"></span>
                 <button id="settingsBtn" class="btn btn-icon" onclick="openSettings()" title="Settings">⚙️</button>
-                <button id="loginBtn" class="btn btn-primary" onclick="initiateGitHubLogin()">Login</button>
-                <button id="logoutBtn" class="btn btn-secondary" onclick="logout()" style="display:none;">Logout</button>
+                <button id="loginBtn" class="btn btn-primary" onclick="initiateGitHubLogin()" style="display:none;">Login</button>
+                <button id="logoutBtn" class="btn btn-secondary" onclick="handleLogout()" style="display:none;">Logout</button>
             </div>
         </div>
     </nav>

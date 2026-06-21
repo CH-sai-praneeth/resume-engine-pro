@@ -2,6 +2,10 @@
 // COST CALCULATOR - Real-time cost estimation
 // ============================================================================
 
+if (typeof window.CostCalculator !== 'undefined') {
+    console.warn('CostCalculator already loaded, skipping');
+} else {
+
 const CostCalculator = {
     calculateResumeGenerationCost(provider, mode, count = 1) {
         const baseCost = AIIntegration.getCost(provider, mode);
@@ -111,6 +115,11 @@ const CostCalculator = {
         return comparison;
     }
 };
+
+window.CostCalculator = CostCalculator;
+console.log('CostCalculator initialized');
+
+} // End of guard
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = CostCalculator;

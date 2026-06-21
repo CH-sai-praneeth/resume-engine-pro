@@ -2,6 +2,10 @@
 // GITHUB MANAGER - Handle GitHub API operations (using direct fetch API)
 // ============================================================================
 
+if (typeof window.GitHubManager !== 'undefined') {
+    console.warn('GitHubManager already loaded, skipping');
+} else {
+
 const GitHubManager = {
     token: null,
     user: null,
@@ -381,3 +385,8 @@ const GitHubManager = {
         }
     }
 };
+
+window.GitHubManager = GitHubManager;
+console.log('GitHubManager initialized');
+
+} // End of guard

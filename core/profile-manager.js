@@ -78,4 +78,6 @@ const ProfileManager = {
         }
         return edu.slice(0, 3);
     }
+};
+
 window.ProfileManager = ProfileManager;

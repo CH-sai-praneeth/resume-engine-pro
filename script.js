@@ -104,6 +104,18 @@ async function initializeApp() {
         updateUI();
         // ✅ RESTORE PREVIOUSLY ACTIVE TAB AFTER SESSION RELOAD
         restoreActiveTab();
+        
+        // ✅ VERIFY CONTENT IS ACTUALLY VISIBLE
+        setTimeout(() => {
+            const appPage = document.getElementById('appPage');
+            const content = document.querySelector('.main-tab-content.active');
+            console.log('Post-init check - appPage.active:', appPage?.classList.contains('active'));
+            console.log('Post-init check - active content exists:', !!content);
+            if (!content) {
+                console.warn('⚠️ No active content div found! Forcing dashboard tab.');
+                switchMainTab('dashboard');
+            }
+        }, 100);
     } else {
         console.log('No session, showing login');
         showPage('loginPage');
@@ -121,34 +133,51 @@ function showPage(pageName) {
 }
 
 function switchMainTab(tabName) {
+    console.log(`📌 switchMainTab called with: "${tabName}" (type: ${typeof tabName})`);
+    
     // Remove active class from all buttons and content
     document.querySelectorAll('.main-tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.main-tab-content').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.main-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    console.log(`🔍 Looking for content with id: "${tabName}"`);
+    const content = document.getElementById(tabName);
+    console.log(`🔍 Found content div:`, !!content, content?.id);
     
     // Find and activate the clicked button by matching onclick content
     const buttons = document.querySelectorAll('.main-tab-btn');
-    buttons.forEach(btn => {
+    console.log(`🔍 Found ${buttons.length} buttons`);
+    
+    buttons.forEach((btn, idx) => {
         const onclickAttr = btn.getAttribute('onclick');
+        console.log(`  Button ${idx}: onclick="${onclickAttr}"`);
         if (onclickAttr && onclickAttr.includes(`'${tabName}'`)) {
             btn.classList.add('active');
+            console.log(`✅ Activated button ${idx} for tab: ${tabName}`);
         }
     });
     
     // Activate the content tab
-    const content = document.getElementById(tabName);
     if (content) {
         content.classList.add('active');
+        console.log(`✅ Activated content for tab: ${tabName}`);
+    } else {
+        console.error(`❌ No content div found for tab: ${tabName}`);
     }
     
-    // ✅ SAVE CURRENT TAB TO LOCALSTORAGE FOR PERSISTENCE
-    localStorage.setItem('activeMainTab', tabName);
+    // Save to localStorage if available
+    try {
+        localStorage.setItem('activeMainTab', tabName);
+        console.log(`✅ Saved tab preference: ${tabName}`);
+    } catch (error) {
+        console.warn(`⚠️ localStorage error: ${error.message}`);
+    }
     
-    // Initialize tracker when switching to applications tab
+    // Initialize tracker for applications tab
     if (tabName === 'applications' && window.initializeTracker) {
         initializeTracker();
     }
-    
-    console.log(`✓ Switched to tab: ${tabName}`);
 }
 
 // ============================================================================
@@ -156,16 +185,33 @@ function switchMainTab(tabName) {
 // ============================================================================
 
 function restoreActiveTab() {
-    // ✅ RETRIEVE SAVED TAB FROM LOCALSTORAGE
-    const savedTab = localStorage.getItem('activeMainTab');
-    
-    // Use saved tab if available, otherwise default to dashboard
-    const tabToActivate = savedTab || 'dashboard';
-    
-    console.log(`✓ Restoring tab: ${tabToActivate}`);
-    
-    // Switch to the saved tab (or dashboard if none saved)
-    switchMainTab(tabToActivate);
+    try {
+        // ✅ RETRIEVE SAVED TAB FROM LOCALSTORAGE (non-blocking)
+        let savedTab = null;
+        try {
+            savedTab = localStorage.getItem('activeMainTab');
+            console.log(`🔄 Retrieved from localStorage: ${savedTab}`);
+        } catch (storageError) {
+            console.warn(`⚠️ localStorage blocked (tracking prevention?): ${storageError.message}`);
+            savedTab = null;
+        }
+        
+        const tabToActivate = savedTab || 'dashboard';
+        console.log(`🔄 Restoring tab: ${tabToActivate} (savedTab was: ${savedTab})`);
+        
+        if (!tabToActivate || typeof tabToActivate !== 'string') {
+            console.error(`❌ Invalid tab name: ${tabToActivate}, using dashboard`);
+            switchMainTab('dashboard');
+            return;
+        }
+        
+        // Switch to the saved tab (or dashboard if none saved)
+        switchMainTab(tabToActivate);
+    } catch (error) {
+        // Generic fallback - just default to dashboard
+        console.error(`❌ restoreActiveTab error: ${error.message}`);
+        switchMainTab('dashboard');
+    }
 }
 
 // ============================================================================
@@ -288,6 +334,18 @@ async function handleLogin(token) {
             updateUI();
             // ✅ RESTORE PREVIOUSLY ACTIVE TAB
             restoreActiveTab();
+            
+            // ✅ VERIFY CONTENT IS VISIBLE
+            setTimeout(() => {
+                const appPage = document.getElementById('appPage');
+                const content = document.querySelector('.main-tab-content.active');
+                console.log('Post-login check - appPage.active:', appPage?.classList.contains('active'));
+                console.log('Post-login check - active content exists:', !!content);
+                if (!content) {
+                    console.warn('⚠️ No active content div! Forcing dashboard tab.');
+                    switchMainTab('dashboard');
+                }
+            }, 100);
             console.log('Login complete');
         } else {
             console.error('Authentication failed:', result.error);

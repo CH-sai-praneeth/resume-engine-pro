@@ -2,8 +2,6 @@
 // STORAGE MANAGER - Handle LocalStorage, Encryption, and Syncing
 // ============================================================================
 
-if (typeof window.StorageManager !== 'undefined') { } else {
-
 const StorageManager = {
     PREFIX: 'resumeEngineProV1_',
     
@@ -256,4 +254,3 @@ const StorageManager = {
 };
 
 window.StorageManager = StorageManager;
-}

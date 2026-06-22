@@ -3,7 +3,6 @@
 // JOB TRACKER FUNCTIONS
 // ============================================================================
 
-if (typeof window._trackerFunctionsLoaded !== 'undefined') { } else {
 window._trackerFunctionsLoaded = true;
 
 // Tracker Initialization
@@ -450,5 +449,3 @@ document.addEventListener('click', (e) => {
         closeContactModal();
     }
 });
-
-}

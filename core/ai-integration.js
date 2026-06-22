@@ -2,8 +2,6 @@
 // AI INTEGRATION - Multi-provider support (OpenAI, Claude, Gemini, Mistral)
 // ============================================================================
 
-if (typeof window.AIIntegration !== 'undefined') { } else {
-
 const AIIntegration = {
     providers: {
         openai: {
@@ -363,5 +361,3 @@ Format as JSON with keys: summary, experience, skills, ats_suggestions, full_res
 };
 
 window.AIIntegration = AIIntegration;
-
-}

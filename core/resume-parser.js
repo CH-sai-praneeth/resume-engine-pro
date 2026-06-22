@@ -2,8 +2,6 @@
 // RESUME PARSER - Parse and extract resume data
 // ============================================================================
 
-if (typeof window.ResumeParser !== 'undefined') { } else {
-
 const ResumeParser = {
     async parseFile(file) {
         const ext = file.name.split('.').pop().toLowerCase();
@@ -185,5 +183,3 @@ const ResumeParser = {
 };
 
 window.ResumeParser = ResumeParser;
-
-}

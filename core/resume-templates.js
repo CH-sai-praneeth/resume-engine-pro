@@ -1,7 +1,7 @@
 // ============================================================================
 // RESUME TEMPLATES - 50+ Professional Resume Designs
 // ============================================================================
-if (typeof window.ResumeTemplates !== 'undefined') { } else {
+
 const ResumeTemplates = {
     templates: [
         // Modern Templates
@@ -253,5 +253,3 @@ const ResumeTemplates = {
 };
 
 window.ResumeTemplates = ResumeTemplates;
-
-}

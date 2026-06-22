@@ -102,6 +102,8 @@ async function initializeApp() {
         showPage('appPage');
         currentUser = session.user;
         updateUI();
+        // ✅ RESTORE PREVIOUSLY ACTIVE TAB AFTER SESSION RELOAD
+        restoreActiveTab();
     } else {
         console.log('No session, showing login');
         showPage('loginPage');
@@ -138,10 +140,32 @@ function switchMainTab(tabName) {
         content.classList.add('active');
     }
     
+    // ✅ SAVE CURRENT TAB TO LOCALSTORAGE FOR PERSISTENCE
+    localStorage.setItem('activeMainTab', tabName);
+    
     // Initialize tracker when switching to applications tab
     if (tabName === 'applications' && window.initializeTracker) {
         initializeTracker();
     }
+    
+    console.log(`✓ Switched to tab: ${tabName}`);
+}
+
+// ============================================================================
+// RESTORE ACTIVE TAB ON PAGE LOAD
+// ============================================================================
+
+function restoreActiveTab() {
+    // ✅ RETRIEVE SAVED TAB FROM LOCALSTORAGE
+    const savedTab = localStorage.getItem('activeMainTab');
+    
+    // Use saved tab if available, otherwise default to dashboard
+    const tabToActivate = savedTab || 'dashboard';
+    
+    console.log(`✓ Restoring tab: ${tabToActivate}`);
+    
+    // Switch to the saved tab (or dashboard if none saved)
+    switchMainTab(tabToActivate);
 }
 
 // ============================================================================
@@ -262,6 +286,8 @@ async function handleLogin(token) {
             currentUser = result.user;
             showPage('appPage');
             updateUI();
+            // ✅ RESTORE PREVIOUSLY ACTIVE TAB
+            restoreActiveTab();
             console.log('Login complete');
         } else {
             console.error('Authentication failed:', result.error);

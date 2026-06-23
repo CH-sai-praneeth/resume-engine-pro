@@ -256,5 +256,19 @@ window.generateSingle = generateSingle; // async: must expose explicitly (see #1
         codeExample: 'async parsePDF(file){\n  // ... per page:\n  let line = "", lastY = null; const pageLines = [];\n  for (const item of content.items){\n    const y = Math.round(item.transform[5]);\n    if (lastY !== null && Math.abs(y - lastY) > 2){ pageLines.push(line.trim()); line = ""; }\n    line += item.str + " "; lastY = y;\n  }\n}\nsplitSections(lines){ /* map header regex -> {summary, experience, education, skills} */ }',
         lesson: 'PDF.js returns positioned text fragments, not lines - joining them with spaces silently destroys the structure every section parser depends on. Reconstruct lines from the Y coordinate first. Build parsers around section headers (which resumes reliably have) rather than brittle per-line keyword guesses, and always keep a rawText fallback so a parsing miss degrades to "shows everything" instead of "shows nothing".',
         impact: 'Critical - The generated resume/cover letter/portfolio now contain the actual uploaded resume content tailored to the job description, restoring the core promise of the app for free, local generation.'
+    },
+    {
+        id: 18,
+        title: 'ResumeParser Module "MISSING" - Orphaned Method Broke the Whole File',
+        severity: 'critical',
+        status: 'Fixed',
+        role: 'Build Engineer / Frontend Developer',
+        fixTime: '15 min',
+        description: 'After the parser rewrite (bug #17), the live health check showed "ResumeParser: ❌ MISSING" and resume uploads failed with "ResumeParser module not loaded". Every other module loaded fine. The browser silently refused to define window.ResumeParser.',
+        rootCause: 'A string-replace edit during the rewrite removed the "extractEmail(lines) {" method header but left its body in place. The result was an orphaned statement (const match = ...) sitting between two object-literal methods, producing "SyntaxError: Unexpected identifier" at parse time. A file with a syntax error is never executed, so window.ResumeParser = ResumeParser at the bottom never ran and the module appeared missing. The VS Code JS language service did NOT flag the error, so it slipped through; only node --check surfaced it.',
+        resolution: 'Restored the missing "extractEmail(lines) {" method header so the body belongs to a real method again, then validated with "node --check core/resume-parser.js" (and script.js) before committing. Both now pass.',
+        codeExample: '// BROKEN: header dropped, body orphaned inside the object literal\n    extractEducation(sections, lines) { /* ... */ },\n\n        const match = lines.find(l => l.match(/.../));  // <-- Unexpected identifier\n        return match ? ... : "";\n    },\n\n// FIXED:\n    extractEmail(lines) {\n        const match = lines.find(l => l.match(/.../));\n        return match ? ... : "";\n    },',
+        lesson: 'Editor linters do not always catch JavaScript syntax errors in plain .js files - always run "node --check <file>" after non-trivial edits to client-side JS. When a module reports as "missing" at runtime but the file is clearly included, suspect a parse-time SyntaxError that aborts the whole script (and silently skips the window.X = X export at the end).',
+        impact: 'Critical - Restored resume parsing/upload entirely; without the export the app could not load any uploaded resume.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

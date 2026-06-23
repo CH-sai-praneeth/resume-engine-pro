@@ -215,6 +215,7 @@ const ResumeParser = {
         return block.map(l => l.trim()).filter(Boolean).slice(0, 5);
     },
 
+    extractEmail(lines) {
         const match = lines.find(l => l.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/));
         return match ? match.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)[0] : '';
     },

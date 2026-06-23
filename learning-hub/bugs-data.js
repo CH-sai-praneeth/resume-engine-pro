@@ -270,5 +270,19 @@ window.generateSingle = generateSingle; // async: must expose explicitly (see #1
         codeExample: '// BROKEN: header dropped, body orphaned inside the object literal\n    extractEducation(sections, lines) { /* ... */ },\n\n        const match = lines.find(l => l.match(/.../));  // <-- Unexpected identifier\n        return match ? ... : "";\n    },\n\n// FIXED:\n    extractEmail(lines) {\n        const match = lines.find(l => l.match(/.../));\n        return match ? ... : "";\n    },',
         lesson: 'Editor linters do not always catch JavaScript syntax errors in plain .js files - always run "node --check <file>" after non-trivial edits to client-side JS. When a module reports as "missing" at runtime but the file is clearly included, suspect a parse-time SyntaxError that aborts the whole script (and silently skips the window.X = X export at the end).',
         impact: 'Critical - Restored resume parsing/upload entirely; without the export the app could not load any uploaded resume.'
+    },
+    {
+        id: 19,
+        title: 'Learning Hub Data File Silently Broken - Multi-line Single-Quoted Strings',
+        severity: 'high',
+        status: 'Fixed',
+        role: 'Build Engineer / Documentation',
+        fixTime: '10 min',
+        description: 'While validating the parser fix with "node --check", the Learning Hub data file learning-hub/bugs-data.js was found to have a SyntaxError of its own: "Invalid or unexpected token" at bug #14. Because the file never parsed, window.BUGS was never created, so the entire Bug Tracking table and modals in the Learning Hub silently rendered nothing - a latent break introduced in an earlier session that went unnoticed because nobody ran a syntax check.',
+        rootCause: 'Two codeExample values (bugs #14 and #15) were written as single-quoted string literals that spanned multiple physical lines. JavaScript single- and double-quoted strings cannot contain raw newlines, so the parser failed at the first line break. A failed parse aborts the whole file, leaving window.BUGS undefined and the bug tracker empty. The error was invisible in the browser unless the console was open, and the VS Code linter did not surface it.',
+        resolution: 'Converted the offending multi-line codeExample values from single quotes to backtick template literals (which legally span multiple lines), confirming none contained ${...} interpolation. Re-ran "node --check learning-hub/bugs-data.js" (pass) and loaded the file in Node to assert window.BUGS.length === expected count. Going forward, multi-line code snippets in bugs-data.js must use backticks or single-line strings with \\n.',
+        codeExample: '// BROKEN - newline inside a single-quoted string is a SyntaxError\ncodeExample: \'async function generateSingle(){\n  const p = ...;\n}\',\n\n// FIXED - backtick template literal can span lines\ncodeExample: `async function generateSingle(){\n  const p = ...;\n}`,\n\n// Validate: node --check learning-hub/bugs-data.js\n// Assert load: node -e "window={}; require(\'./learning-hub/bugs-data.js\'); console.log(window.BUGS.length)"',
+        lesson: 'Documentation and data files are code too - a broken data file can disable an entire feature with zero visible error. Validate every committed .js (including data/content files) with node --check, and prefer backtick template literals for any string that contains code snippets or spans multiple lines.',
+        impact: 'High - Restored the entire Learning Hub Bug Tracking view (table + detail modals); window.BUGS now loads all documented bugs again.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

@@ -315,5 +315,31 @@ const ascii = s => String(s).replace(/[\\u2018\\u2019]/g,"'").replace(/[\\u201C\
   .replace(/[^\\x09\\x0A\\x0D\\x20-\\x7E]/g,'');`,
         lesson: 'LLMs return JSON inside markdown code fences and with model-specific field names - always strip fences, isolate the {...} block, parse defensively, and normalize the shape before use; never let a parse failure leak raw JSON to the user. jsPDF built-in fonts are Latin1-only, so sanitize text to ASCII (or embed a Unicode font) to avoid garbled glyphs. Form controls that sit outside the shared .form-group wrapper get no theme styling - either reuse the wrapper or add explicit selectors, and remember <option> needs its own dark background to fix white-on-white popups. Constrain resizable textareas (resize:vertical + max-width:100%) so they cannot overlap the layout.',
         impact: 'High - Free-AI generation now produces properly formatted resumes (not raw JSON), PDFs render clean text, all Generate-tab controls are readable on the dark theme, the JD box no longer breaks the layout, free providers hide price tags, and uploaded profiles show real contact info and skills.'
+    },
+    {
+        id: 21,
+        title: 'Pollinations AI Still Dumped Raw JSON - Oversized Prompt Truncated the Response',
+        severity: 'critical',
+        status: 'Fixed',
+        role: 'Frontend Developer / Prompt Engineering / SRE',
+        fixTime: '50 min',
+        description: 'Even after bug #20 added a fence-stripping JSON parser, resumes/cover letters/portfolios generated with the free Pollinations AI STILL rendered the entire model response as raw JSON in the Summary section (visible {"summary":..., "experience":[...], "skills":[...], "ats_suggestions":[...], "full_resume":"..."}). The structure/headings were correct, but the content was the JSON blob, so the output looked unformatted.',
+        rootCause: 'The tailoring prompt asked the model for FIVE keys including "ats_suggestions" and a giant "full_resume" string containing the whole resume with embedded newlines and quotes. That field (a) bloated the output past the provider default token limit so the JSON was TRUNCATED mid-string, and (b) embedded raw newlines/quotes that make JSON invalid. JSON.parse therefore failed, and bug #20\'s fallback still set summary to the cleaned-but-raw JSON text. No max_tokens was sent, and the prompt sent the full resume with JSON.stringify(..., null, 2) wasting tokens.',
+        resolution: 'Redesigned the prompt to request ONE minified JSON object with only three lean keys (summary as a single newline-free string, skills[], experience[{role,company,location,dates,details[]}]) and explicit rules to escape quotes and avoid raw newlines. Dropped full_resume and ats_suggestions entirely. Sent a compact candidate payload (no pretty-print) plus max_tokens (>=1800), temperature 0.4, and response_format:{type:"json_object"} to Pollinations/custom requests. Hardened parseAIResponse with field-level recovery (regex for summary, balanced-bracket array extraction for skills/experience) so a partially-truncated response still yields usable structured data, and it now returns {} rather than the raw JSON on total failure. Added a guard so a summary that still looks like JSON is rejected (keeps the original resume summary), and experience details now render as bullet lines.',
+        codeExample: `// Lean schema (no full_resume / ats_suggestions) + hard limits
+body: JSON.stringify({ model:'openai', temperature:0.4, max_tokens:1800,
+  response_format:{type:'json_object'},
+  messages:[{role:'system',content:'Respond with ONLY one valid minified JSON object.'},
+            {role:'user',content:prompt}] });
+
+// Never let JSON leak into the resume again
+const looksLikeJson = sum.startsWith('{') || /"(summary|experience|skills)"\\s*:/.test(sum);
+if (sum && !looksLikeJson) tailored.summary = sum;
+
+// Recover fields from a truncated response instead of dumping the blob
+const expArr = extractBalancedArray(candidate, '"experience"');
+if (expArr) { try { recovered.experience = JSON.parse(expArr); } catch(_){} }`,
+        lesson: 'A "return JSON" instruction is not enough: asking for a large nested string field (full_resume) almost guarantees the response exceeds the token budget and gets truncated into invalid JSON. Keep the schema minimal and flat, forbid raw newlines inside strings, set an explicit max_tokens, and request response_format json_object. Always pair a strict prompt with a tolerant parser that recovers individual fields from malformed output and degrades to the original data - never to the raw blob.',
+        impact: 'Critical - Free Pollinations AI now returns compact, parseable JSON that maps cleanly into the resume template, so PDF/Word/portfolio outputs are properly formatted ATS resumes instead of a JSON dump.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

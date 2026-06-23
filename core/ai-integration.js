@@ -376,14 +376,18 @@ const AIIntegration = {
 
     async tailorWithPollinations(resumeData, jdData, mode) {
         const prompt = this.buildTailoringPrompt(resumeData, jdData, mode);
+        const maxTokens = Math.max(1800, this.providers.pollinations.modes[mode]?.tokens || 1500);
         try {
             const response = await fetch(this.providers.pollinations.endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: 'openai',
+                    temperature: 0.4,
+                    max_tokens: maxTokens,
+                    response_format: { type: 'json_object' },
                     messages: [
-                        { role: 'system', content: 'You are an expert resume writer and ATS specialist. Always respond with valid JSON.' },
+                        { role: 'system', content: 'You are an expert resume writer and ATS specialist. Respond with ONLY a single valid minified JSON object — no markdown, no code fences, no commentary.' },
                         { role: 'user', content: prompt }
                     ]
                 })
@@ -412,14 +416,17 @@ const AIIntegration = {
         const prompt = this.buildTailoringPrompt(resumeData, jdData, mode);
         const headers = { 'Content-Type': 'application/json' };
         if (cfg.key) headers['Authorization'] = `Bearer ${cfg.key}`;
+        const maxTokens = Math.max(1800, this.providers.custom.modes[mode]?.tokens || 1500);
         try {
             const response = await fetch(cfg.endpoint, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
                     model: cfg.model || 'gpt-3.5-turbo',
+                    temperature: 0.4,
+                    max_tokens: maxTokens,
                     messages: [
-                        { role: 'system', content: 'You are an expert resume writer and ATS specialist. Respond with valid JSON.' },
+                        { role: 'system', content: 'You are an expert resume writer and ATS specialist. Respond with ONLY a single valid minified JSON object — no markdown, no code fences, no commentary.' },
                         { role: 'user', content: prompt }
                     ]
                 })
@@ -443,30 +450,40 @@ const AIIntegration = {
     // ========================================================================
     
     buildTailoringPrompt(resumeData, jdData, mode) {
-        const modePrompts = {
-            fast: 'Quickly match key resume points to the job description.',
-            smart: 'Thoroughly tailor the resume to the job description, reorder sections by relevance, and optimize for ATS.',
-            ultra: 'Completely rewrite the resume to perfectly match the job description, add missing keywords, and ensure ATS compatibility.'
-        };
-        
-        return `
-${modePrompts[mode]}
+        const modeNote = {
+            fast: 'Lightly tailor the wording to the job.',
+            smart: 'Thoroughly tailor the resume to the job and optimize wording for ATS keyword matching.',
+            ultra: 'Aggressively rewrite every section to maximize ATS keyword match while staying truthful to the candidate.'
+        }[mode] || '';
 
-CURRENT RESUME:
-${JSON.stringify(resumeData, null, 2)}
+        // Keep the candidate payload compact so the model has room to answer in full.
+        const candidate = {
+            name: resumeData.name || resumeData.displayName || '',
+            summary: resumeData.summary || '',
+            skills: resumeData.skills || [],
+            experience: resumeData.experience || [],
+            education: resumeData.education || []
+        };
+
+        return `You are an expert resume writer and ATS optimization specialist.
+${modeNote}
+
+Rewrite the CANDIDATE RESUME to target the JOB DESCRIPTION. Use ONLY facts present in the candidate's resume — rephrase and reorder to surface the keywords and requirements from the job description. Do not invent employers, titles, dates, or credentials.
+
+CANDIDATE RESUME (JSON):
+${JSON.stringify(candidate)}
 
 JOB DESCRIPTION:
 ${jdData}
 
-Please provide:
-1. A tailored summary optimized for this role
-2. Reordered experiences with emphasis on relevant skills
-3. Updated skills section highlighting keywords from JD
-4. ATS optimization suggestions
-5. Full tailored resume text ready to use
+Respond with ONE valid minified JSON object and NOTHING else — no markdown, no code fences, no commentary before or after. Use EXACTLY these keys:
+{"summary":"3-4 sentence professional summary tailored to the job (plain text, no line breaks)","skills":["12-20 most relevant skills, prioritizing exact keywords from the job description"],"experience":[{"role":"job title","company":"employer","location":"city, ST","dates":"Mon YYYY - Mon YYYY","details":["achievement bullet, action-verb first, quantified, under 28 words"]}]}
 
-Format as JSON with keys: summary, experience, skills, ats_suggestions, full_resume
-`;
+Rules:
+- "summary" must be a single plain-text string with no newline characters.
+- Every string must be valid JSON: escape any double quotes, do not use raw newlines inside strings.
+- Order experience from most recent to oldest. Keep 3-6 bullets per role.
+- Return only the JSON object.`;
     },
     
     // ========================================================================

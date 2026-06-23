@@ -1360,8 +1360,12 @@ async function tailorProfileWithAI(profile, jdText, provider, mode) {
     const aiData = parseAIResponse(result.tailored);
 
     const tailored = { ...profile };
+    // Summary: only use it if it's real prose, never a stray JSON blob
     if (aiData.summary && typeof aiData.summary === 'string') {
-        tailored.summary = aiData.summary.trim();
+        const sum = aiData.summary.trim();
+        const looksLikeJson = sum.startsWith('{') || sum.startsWith('[') ||
+            /"(summary|experience|skills|full_resume|ats_suggestions)"\s*:/.test(sum);
+        if (sum && !looksLikeJson) tailored.summary = sum;
     }
     // Skills: accept array or comma string
     if (Array.isArray(aiData.skills) && aiData.skills.length) {
@@ -1371,32 +1375,62 @@ async function tailorProfileWithAI(profile, jdText, provider, mode) {
     }
     // Experience: normalize the model's shape into what the builders expect
     if (Array.isArray(aiData.experience) && aiData.experience.length) {
-        tailored.experience = aiData.experience.map(normalizeAIExperience);
+        const mapped = aiData.experience.map(normalizeAIExperience)
+            .filter(e => e.position || e.company || e.description);
+        if (mapped.length) tailored.experience = mapped;
     }
     return { profile: tailored, cost: result.cost || 0, usedAI: true };
 }
 
-// Parse an AI response that may be wrapped in markdown code fences or contain
-// surrounding prose. Always returns an object; on total failure, returns the
-// cleaned text as { summary } so generation still produces readable output.
+// Parse an AI response that may be wrapped in markdown code fences, contain
+// surrounding prose, or be slightly malformed/truncated. Always returns an
+// object. It NEVER returns the raw JSON text as the summary — if structured
+// parsing fails entirely it returns {} so the caller keeps the original profile.
 function parseAIResponse(raw) {
     if (!raw) return {};
     if (typeof raw === 'object') return raw;
-    let s = String(raw).trim();
-    // Strip ```json ... ``` or ``` ... ``` fences (anywhere)
-    s = s.replace(/```[a-zA-Z]*\s*/g, '').replace(/```/g, '').trim();
-    // Isolate the JSON object if the model added extra prose around it
-    const start = s.indexOf('{');
-    const end = s.lastIndexOf('}');
-    let candidate = (start !== -1 && end > start) ? s.slice(start, end + 1) : s;
+    let s = String(raw).replace(/```[a-zA-Z]*\s*/g, '').replace(/```/g, '').trim();
+    const a = s.indexOf('{');
+    const b = s.lastIndexOf('}');
+    const candidate = (a !== -1 && b > a) ? s.slice(a, b + 1) : s;
+
+    // 1) Clean parse of the whole object
     try {
         const obj = JSON.parse(candidate);
         if (obj && typeof obj === 'object') return obj;
-    } catch (_) {
-        // fall through
+    } catch (_) { /* fall through to field-level recovery */ }
+
+    // 2) Field-level recovery from malformed/truncated JSON
+    const recovered = {};
+    const sumMatch = candidate.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (sumMatch) {
+        recovered.summary = sumMatch[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
     }
-    // Could not parse JSON — use the cleaned, fence-free text as the summary
-    return { summary: s };
+    const skillsArr = extractBalancedArray(candidate, '"skills"');
+    if (skillsArr) { try { recovered.skills = JSON.parse(skillsArr); } catch (_) { /* skip */ } }
+    const expArr = extractBalancedArray(candidate, '"experience"');
+    if (expArr) { try { recovered.experience = JSON.parse(expArr); } catch (_) { /* skip */ } }
+    return recovered; // may be {} -> caller keeps the original profile data
+}
+
+// Extract a balanced [ ... ] array that follows the given JSON key token.
+// Returns null if the array is missing or unbalanced (e.g. response truncated).
+function extractBalancedArray(text, keyToken) {
+    const ki = text.indexOf(keyToken);
+    if (ki === -1) return null;
+    const start = text.indexOf('[', ki);
+    if (start === -1) return null;
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < text.length; i++) {
+        const ch = text[i];
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === '[') depth++;
+        else if (ch === ']') { depth--; if (depth === 0) return text.slice(start, i + 1); }
+    }
+    return null;
 }
 
 // Map a model experience entry (role/company/location/dates/details[]) onto the
@@ -1407,12 +1441,13 @@ function normalizeAIExperience(exp) {
     const company = [exp.company || exp.employer || exp.organization || '', exp.location || '']
         .filter(Boolean).join(', ');
     const year = exp.year || exp.dates || exp.date || exp.duration || exp.period || '';
+    let details = exp.details || exp.responsibilities || exp.bullets || exp.highlights || exp.achievements;
     let description = '';
-    if (Array.isArray(exp.details)) description = exp.details.join('\n');
-    else if (Array.isArray(exp.responsibilities)) description = exp.responsibilities.join('\n');
-    else if (Array.isArray(exp.bullets)) description = exp.bullets.join('\n');
-    else if (Array.isArray(exp.highlights)) description = exp.highlights.join('\n');
-    else description = exp.description || exp.summary || '';
+    if (Array.isArray(details)) {
+        description = details.map(d => String(d).trim()).filter(Boolean).map(d => '• ' + d).join('\n');
+    } else {
+        description = exp.description || exp.summary || '';
+    }
     return { position, company, year, description };
 }
 

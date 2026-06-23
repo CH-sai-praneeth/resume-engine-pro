@@ -910,6 +910,11 @@ async function handleResumeUpload(event) {
         }, 800);
     }
 }
+// This whole file is wrapped in a load-guard block. Regular function
+// declarations leak to global scope (legacy Annex B semantics), but `async`
+// function declarations inside a block do NOT — so async handlers referenced
+// from inline HTML attributes must be exposed on window explicitly.
+window.handleResumeUpload = handleResumeUpload;
 
 // Save a profile from either the Upload Resume or Manual Entry method
 function saveProfile() {

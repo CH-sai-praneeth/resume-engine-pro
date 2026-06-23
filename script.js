@@ -1093,5 +1093,374 @@ function loadProfileData() {
     }
 }
 
+// ============================================================================
+// RESUME / COVER LETTER / PORTFOLIO GENERATION (local, no API key required)
+// ============================================================================
+
+// Escape user-provided text before inserting into generated HTML/DOC output
+function escHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function safeFileName(name) {
+    return (name || 'Resume').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'Resume';
+}
+
+// Normalize a stored profile so experience/education/skills are always arrays
+function normalizeProfile(profile) {
+    const p = { ...profile };
+    if (typeof p.skills === 'string') {
+        p.skills = p.skills.split(',').map(s => s.trim()).filter(Boolean);
+    } else if (!Array.isArray(p.skills)) {
+        p.skills = [];
+    }
+    if (typeof p.experience === 'string') {
+        p.experience = p.experience.trim() ? [{ description: p.experience.trim() }] : [];
+    } else if (!Array.isArray(p.experience)) {
+        p.experience = [];
+    }
+    if (typeof p.education === 'string') {
+        p.education = p.education.trim() ? [p.education.trim()] : [];
+    } else if (!Array.isArray(p.education)) {
+        p.education = [];
+    }
+    return p;
+}
+
+// Pull simple keywords from a job description and find matching profile skills
+function matchSkillsToJD(profile, jdText) {
+    const jd = (jdText || '').toLowerCase();
+    if (!jd || !profile.skills || !profile.skills.length) return [];
+    return profile.skills.filter(skill => jd.includes(String(skill).toLowerCase()));
+}
+
+// Try to guess job title + company from a pasted JD (best-effort, optional)
+function extractJobMeta(jdText) {
+    const firstLine = (jdText || '').split('\n').map(l => l.trim()).filter(Boolean)[0] || '';
+    return {
+        title: firstLine.slice(0, 80) || 'the role',
+        company: 'the company'
+    };
+}
+
+// Build a Word-compatible .doc Blob from HTML (docx.js isn't loaded in-browser)
+function buildResumeDocBlob(profile, matched) {
+    const p = normalizeProfile(profile);
+    const contact = [p.email, p.phone, p.location, p.linkedin].filter(Boolean).map(escHtml).join(' &nbsp;|&nbsp; ');
+    const skills = (matched && matched.length ? matched : p.skills);
+    const body = `
+        <h1 style="text-align:center;margin:0;font-family:Calibri,sans-serif;">${escHtml(p.displayName || p.name || 'Your Name')}</h1>
+        <p style="text-align:center;font-size:10pt;color:#555;font-family:Calibri,sans-serif;">${contact}</p>
+        ${p.summary ? `<h2 style="border-bottom:1px solid #888;font-family:Calibri,sans-serif;">Summary</h2><p style="font-family:Calibri,sans-serif;">${escHtml(p.summary)}</p>` : ''}
+        ${skills.length ? `<h2 style="border-bottom:1px solid #888;font-family:Calibri,sans-serif;">Core Skills</h2><p style="font-family:Calibri,sans-serif;">${skills.map(escHtml).join(' • ')}</p>` : ''}
+        ${p.experience.length ? `<h2 style="border-bottom:1px solid #888;font-family:Calibri,sans-serif;">Experience</h2>${p.experience.map(exp => `
+            <p style="font-family:Calibri,sans-serif;"><strong>${escHtml(exp.position || exp.title || '')}</strong>${exp.company ? ' — ' + escHtml(exp.company) : ''}${exp.year ? ' (' + escHtml(exp.year) + ')' : ''}<br>${escHtml(exp.description || '')}</p>`).join('')}` : ''}
+        ${p.education.length ? `<h2 style="border-bottom:1px solid #888;font-family:Calibri,sans-serif;">Education</h2>${p.education.map(e => `<p style="font-family:Calibri,sans-serif;">${escHtml(typeof e === 'string' ? e : (e.degree || e.school || ''))}</p>`).join('')}` : ''}
+    `;
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body>${body}</body></html>`;
+    return new Blob(['\ufeff', html], { type: 'application/msword' });
+}
+
+// Build a PDF Blob using PDFKit + blob-stream (both loaded from CDN)
+function buildResumePdfBlob(profile, matched) {
+    return new Promise((resolve, reject) => {
+        try {
+            if (typeof PDFDocument === 'undefined' || typeof blobStream === 'undefined') {
+                reject(new Error('PDF library not loaded'));
+                return;
+            }
+            const p = normalizeProfile(profile);
+            const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
+            const stream = doc.pipe(blobStream());
+
+            const heading = (text) => {
+                doc.moveDown(0.6).fontSize(12).fillColor('#1a73e8').text(text.toUpperCase());
+                doc.moveTo(doc.x, doc.y).lineTo(560, doc.y).strokeColor('#cccccc').stroke();
+                doc.moveDown(0.3).fillColor('#222');
+            };
+
+            doc.fontSize(22).fillColor('#111').text(p.displayName || p.name || 'Your Name', { align: 'center' });
+            const contact = [p.email, p.phone, p.location, p.linkedin].filter(Boolean).join('   |   ');
+            if (contact) doc.moveDown(0.2).fontSize(9).fillColor('#555').text(contact, { align: 'center' });
+
+            if (p.summary) { heading('Summary'); doc.fontSize(10).text(p.summary); }
+
+            const skills = (matched && matched.length ? matched : p.skills);
+            if (skills.length) { heading('Core Skills'); doc.fontSize(10).text(skills.join('  •  ')); }
+
+            if (p.experience.length) {
+                heading('Experience');
+                p.experience.forEach(exp => {
+                    const head = [exp.position || exp.title, exp.company].filter(Boolean).join(' — ');
+                    if (head) doc.fontSize(11).fillColor('#000').text(head + (exp.year ? `  (${exp.year})` : ''));
+                    if (exp.description) doc.fontSize(10).fillColor('#333').text(exp.description);
+                    doc.moveDown(0.3);
+                });
+            }
+
+            if (p.education.length) {
+                heading('Education');
+                p.education.forEach(e => doc.fontSize(10).fillColor('#333').text(typeof e === 'string' ? e : (e.degree || e.school || '')));
+            }
+
+            doc.end();
+            stream.on('finish', () => resolve(stream.toBlob('application/pdf')));
+            stream.on('error', err => reject(err));
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+function buildCoverLetterDocBlob(profile, jobTitle, company, jdText) {
+    const p = normalizeProfile(profile);
+    const topSkills = (matchSkillsToJD(p, jdText).slice(0, 4).join(', ')) || p.skills.slice(0, 4).join(', ');
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const body = `
+        <p style="font-family:Calibri,sans-serif;">${escHtml(today)}</p>
+        <p style="font-family:Calibri,sans-serif;">Dear Hiring Manager,</p>
+        <p style="font-family:Calibri,sans-serif;">I am excited to apply for the <strong>${escHtml(jobTitle)}</strong> position at ${escHtml(company)}. With my background${p.summary ? ' as ' + escHtml(p.summary.split('.')[0]) : ''}, I am confident I can deliver immediate value to your team.</p>
+        ${topSkills ? `<p style="font-family:Calibri,sans-serif;">My strengths align closely with this role, particularly in ${escHtml(topSkills)}. I bring a proven track record of turning these capabilities into measurable outcomes.</p>` : ''}
+        <p style="font-family:Calibri,sans-serif;">I would welcome the opportunity to discuss how my experience can contribute to your goals. Thank you for your consideration.</p>
+        <p style="font-family:Calibri,sans-serif;">Sincerely,<br>${escHtml(p.displayName || p.name || '')}</p>
+    `;
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body>${body}</body></html>`;
+    return new Blob(['\ufeff', html], { type: 'application/msword' });
+}
+
+function buildJobDetailsBlob(jobTitle, company, jdText) {
+    const md = `# Job Application Details
+
+## Position
+${jobTitle}
+
+## Company
+${company}
+
+## Date
+${new Date().toISOString().split('T')[0]}
+
+## Job Description
+${jdText || '(not provided)'}
+
+---
+Generated by Resume Engine Pro
+`;
+    return new Blob([md], { type: 'text/markdown' });
+}
+
+function addDownloadLink(container, blob, filename, label) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.className = 'btn btn-secondary';
+    a.style.margin = '0.25rem';
+    a.textContent = `⬇ ${label}`;
+    container.appendChild(a);
+}
+
+async function generateSingle() {
+    const select = document.getElementById('selectProfile');
+    const profileId = select && select.value;
+    if (!profileId) {
+        showToast('Please select a profile first', 'warning');
+        return;
+    }
+    const profile = StorageManager.getProfile(profileId);
+    if (!profile) {
+        showToast('Selected profile not found', 'error');
+        return;
+    }
+    const jdText = (document.getElementById('jdText')?.value || '').trim();
+    if (!jdText) {
+        showToast('Please paste a job description (Step 2)', 'warning');
+        return;
+    }
+
+    const wantResume = document.getElementById('genResume')?.checked;
+    const wantCover = document.getElementById('genCoverLetter')?.checked;
+    const wantPortfolio = document.getElementById('genPortfolio')?.checked;
+    const wantJobDetails = document.getElementById('genJobDetails')?.checked;
+    const template = document.getElementById('portfolioTemplate')?.value || 'minimalist';
+
+    const statusBox = document.getElementById('generationStatus');
+    const statusContent = document.getElementById('statusContent');
+    const downloadLinks = document.getElementById('downloadLinks');
+    if (statusBox) statusBox.style.display = 'block';
+    if (downloadLinks) { downloadLinks.style.display = 'none'; downloadLinks.innerHTML = ''; }
+    if (statusContent) statusContent.innerHTML = '<p>⏳ Generating your documents...</p>';
+
+    try {
+        const meta = extractJobMeta(jdText);
+        const matched = matchSkillsToJD(normalizeProfile(profile), jdText);
+        const baseName = safeFileName(profile.displayName || profile.name);
+        let count = 0;
+
+        if (wantResume) {
+            const pdfBlob = await buildResumePdfBlob(profile, matched);
+            addDownloadLink(downloadLinks, pdfBlob, `${baseName}_Resume.pdf`, 'Resume (PDF)');
+            const docBlob = buildResumeDocBlob(profile, matched);
+            addDownloadLink(downloadLinks, docBlob, `${baseName}_Resume.doc`, 'Resume (Word)');
+            count++;
+        }
+        if (wantCover) {
+            const clBlob = buildCoverLetterDocBlob(profile, meta.title, meta.company, jdText);
+            addDownloadLink(downloadLinks, clBlob, `${baseName}_CoverLetter.doc`, 'Cover Letter (Word)');
+            count++;
+        }
+        if (wantPortfolio && window.PortfolioTemplates) {
+            try {
+                const html = PortfolioTemplates.generatePortfolio(normalizeProfile(profile), template, 0);
+                addDownloadLink(downloadLinks, new Blob([html], { type: 'text/html' }), `${baseName}_Portfolio.html`, 'Portfolio (HTML)');
+                count++;
+            } catch (e) {
+                console.warn('Portfolio generation failed:', e.message);
+            }
+        }
+        if (wantJobDetails) {
+            addDownloadLink(downloadLinks, buildJobDetailsBlob(meta.title, meta.company, jdText), `${baseName}_JobDetails.md`, 'Job Details (Markdown)');
+            count++;
+        }
+
+        // Save to history
+        try {
+            StorageManager.saveGeneration({
+                profile: profile.name,
+                jobTitle: meta.title,
+                outputs: count,
+                matchedSkills: matched.length
+            });
+        } catch (e) { /* non-fatal */ }
+
+        const matchNote = matched.length ? ` Matched ${matched.length} skill(s) to the JD.` : '';
+        if (statusContent) statusContent.innerHTML = `<p>✅ Generated ${count} document set(s).${matchNote} Click below to download.</p>`;
+        if (downloadLinks) downloadLinks.style.display = 'block';
+        showToast(`Generated ${count} document set(s)`, 'success');
+    } catch (error) {
+        console.error('Generation error:', error);
+        if (statusContent) statusContent.innerHTML = `<p>❌ Generation failed: ${escHtml(error.message)}</p>`;
+        showToast('Generation failed: ' + error.message, 'error');
+    }
+}
+
+async function generateBulk() {
+    const select = document.getElementById('bulkProfile');
+    const profileId = select && select.value;
+    if (!profileId) {
+        showToast('Please select a profile first', 'warning');
+        return;
+    }
+    const profile = StorageManager.getProfile(profileId);
+    if (!profile) {
+        showToast('Selected profile not found', 'error');
+        return;
+    }
+    const raw = (document.getElementById('bulkJDs')?.value || '').trim();
+    if (!raw) {
+        showToast('Please paste one or more job descriptions', 'warning');
+        return;
+    }
+    // Split on blank lines (one JD block per paragraph)
+    const jds = raw.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+    if (!jds.length) {
+        showToast('No job descriptions detected', 'warning');
+        return;
+    }
+
+    const statusBox = document.getElementById('bulkStatus');
+    const statusContent = document.getElementById('bulkStatusContent');
+    if (statusBox) statusBox.style.display = 'block';
+    if (statusContent) statusContent.innerHTML = `<p>⏳ Generating resumes for ${jds.length} job(s)...</p>`;
+
+    const baseName = safeFileName(profile.displayName || profile.name);
+    const linkWrap = document.createElement('div');
+    linkWrap.className = 'download-section';
+    let done = 0;
+
+    try {
+        for (let i = 0; i < jds.length; i++) {
+            const matched = matchSkillsToJD(normalizeProfile(profile), jds[i]);
+            const pdfBlob = await buildResumePdfBlob(profile, matched);
+            addDownloadLink(linkWrap, pdfBlob, `${baseName}_Resume_${i + 1}.pdf`, `Resume #${i + 1} (PDF)`);
+            done++;
+        }
+        try {
+            StorageManager.saveGeneration({ profile: profile.name, bulk: true, count: done });
+        } catch (e) { /* non-fatal */ }
+        if (statusContent) {
+            statusContent.innerHTML = `<p>✅ Generated ${done} resume(s). Click below to download.</p>`;
+            statusContent.appendChild(linkWrap);
+        }
+        showToast(`Generated ${done} resume(s)`, 'success');
+    } catch (error) {
+        console.error('Bulk generation error:', error);
+        if (statusContent) statusContent.innerHTML = `<p>❌ Bulk generation failed: ${escHtml(error.message)}</p>`;
+        showToast('Bulk generation failed: ' + error.message, 'error');
+    }
+}
+
+function updateAICost() {
+    const provider = document.getElementById('aiProvider')?.value;
+    const mode = document.getElementById('generationMode')?.value || 'smart';
+    const box = document.getElementById('costEstimate');
+    if (!box) return;
+    if (!provider) {
+        box.innerHTML = '<p>No AI provider selected — documents are generated locally for free.</p>';
+        return;
+    }
+    const cost = (window.AIIntegration && AIIntegration.getCost) ? AIIntegration.getCost(provider, mode) : 0;
+    const configured = window.AIIntegration && AIIntegration.isConfigured(provider);
+    box.innerHTML = `<p>Estimated AI cost: <strong>$${cost.toFixed(4)}</strong> per resume (${mode}).` +
+        (configured ? '' : ' <em>No API key set — will generate locally for free.</em>') + '</p>';
+}
+
+function updateBulkCost() {
+    const provider = document.getElementById('bulkAiProvider')?.value;
+    const raw = (document.getElementById('bulkJDs')?.value || '').trim();
+    const count = raw ? raw.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean).length : 0;
+    const box = document.getElementById('bulkCostEstimate');
+    if (!box) return;
+    if (!provider) {
+        box.innerHTML = `${count} job(s) detected — generated locally for free.`;
+        return;
+    }
+    const cost = (window.AIIntegration && AIIntegration.getBulkCost) ? AIIntegration.getBulkCost(provider, count, 'smart') : 0;
+    box.innerHTML = `${count} job(s) × estimated <strong>$${cost.toFixed(4)}</strong> total (if using AI).`;
+}
+
+async function fetchJDFromURL() {
+    const url = (document.getElementById('jdUrl')?.value || '').trim();
+    if (!url) {
+        showToast('Please enter a job posting URL', 'warning');
+        return;
+    }
+    showToast('Fetching job description...', 'info');
+    try {
+        const resp = await fetch(url);
+        const text = await resp.text();
+        // Strip HTML tags to approximate the JD text
+        const plain = text.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
+            .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const jdArea = document.getElementById('jdText');
+        if (jdArea) jdArea.value = plain.slice(0, 5000);
+        switchJDInput('paste');
+        document.querySelector('.input-tab')?.classList.add('active');
+        showToast('Job description fetched. Review and edit as needed.', 'success');
+    } catch (error) {
+        console.error('JD fetch error:', error);
+        showToast('Could not fetch URL (site may block cross-origin). Please paste the JD manually.', 'error');
+    }
+}
+
+// async function declarations do NOT leak to global from inside the load-guard
+// block (Annex B applies to plain functions only) — expose handlers used by
+// inline onclick attributes explicitly. See bug #12 in the Learning Hub.
+window.generateSingle = generateSingle;
+window.generateBulk = generateBulk;
+window.fetchJDFromURL = fetchJDFromURL;
+
 }
 

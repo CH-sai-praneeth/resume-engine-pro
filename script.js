@@ -203,6 +203,16 @@ function switchMainTab(tabName) {
                 initVoiceRecording();
             }
         }
+
+        // Render profile cards when entering My Profiles
+        if (tabName === 'profiles' && typeof displayProfiles === 'function') {
+            displayProfiles();
+        }
+
+        // Populate profile dropdowns when entering the Generate tab
+        if (tabName === 'generator' && typeof populateProfileSelects === 'function') {
+            populateProfileSelects();
+        }
     } catch (error) {
         console.error(`❌ switchMainTab error: ${error.message}`);
     }
@@ -478,8 +488,43 @@ function displayProfiles() {
 
 function selectProfile(id) {
     currentProfile = StorageManager.getProfile(id);
-    alert(`Selected profile: ${currentProfile.name}`);
+    if (!currentProfile) {
+        showToast('Profile not found', 'error');
+        return;
+    }
+    // Go to the Generate tab, populate the dropdowns, and preselect this profile
+    switchMainTab('generator');
+    populateProfileSelects(id);
+    showToast(`Using profile: ${currentProfile.displayName || currentProfile.name}`, 'success');
 }
+
+// Fill the Single + Bulk profile dropdowns from saved profiles.
+// Optionally preselect a given profile id.
+function populateProfileSelects(selectedId) {
+    const profiles = StorageManager.getAllProfiles();
+    const ids = Object.keys(profiles);
+    const optionsHtml = ['<option value="">-- Select a profile --</option>']
+        .concat(ids.map(id => {
+            const p = profiles[id];
+            const label = p.displayName || p.name || 'Untitled';
+            return `<option value="${id}">${label}</option>`;
+        })).join('');
+
+    ['selectProfile', 'bulkProfile'].forEach(selId => {
+        const sel = document.getElementById(selId);
+        if (!sel) return;
+        sel.innerHTML = optionsHtml;
+        if (selectedId && profiles[selectedId]) {
+            sel.value = selectedId;
+        }
+    });
+
+    // Keep currentProfile in sync with the single-resume dropdown
+    if (selectedId && profiles[selectedId]) {
+        currentProfile = profiles[selectedId];
+    }
+}
+window.populateProfileSelects = populateProfileSelects;
 
 function deleteProfile(id) {
     if (confirm('Delete this profile?')) {
@@ -961,6 +1006,7 @@ function saveProfile() {
         clearProfileForm();
         closeProfileCreation();
         displayProfiles();
+        if (typeof populateProfileSelects === 'function') populateProfileSelects();
         if (typeof updateStats === 'function') updateStats();
     } catch (error) {
         console.error('Save profile error:', error);
@@ -1040,7 +1086,10 @@ function switchJDInput(type) {
 function loadProfileData() {
     const select = document.getElementById('selectProfile');
     if (select && select.value) {
-        console.log('Loading profile:', select.value);
+        currentProfile = StorageManager.getProfile(select.value);
+        console.log('Loading profile:', currentProfile?.name || select.value);
+    } else {
+        currentProfile = null;
     }
 }
 

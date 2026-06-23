@@ -194,7 +194,7 @@ window.BUGS = [
         description: 'The entire Generate Resumes page was non-functional: "Generate Now" (generateSingle), "Generate All" (generateBulk), cost estimates (updateAICost/updateBulkCost), and "Fetch JD" (fetchJDFromURL) were never implemented. Additionally, the Generator module depended on docx.js, which is commented out in index.html, so any DOCX path would have thrown.',
         rootCause: 'Generation handlers referenced by inline onclick did not exist, so clicks were silent no-ops. The pre-existing Generator/AIIntegration modules also required a paid AI API key and the docx.js library (not loaded) to produce output, so end-to-end generation could never succeed during local testing.',
         resolution: 'Implemented a local, no-API-key generator in script.js. Resumes are produced as PDF via the loaded PDFKit + blob-stream libraries and as Word-compatible .doc via an HTML/msword Blob (sidestepping the missing docx.js). Cover letters render to .doc, portfolios via PortfolioTemplates, and job details to Markdown. JD keywords are matched against profile skills to highlight relevant ones. Bulk mode splits multiple JDs on blank lines and emits one PDF per job. Cost boxes now reflect that local generation is free unless an AI key is configured.',
-        codeExample: 'async function generateSingle(){
+        codeExample: `async function generateSingle(){
   const p = StorageManager.getProfile(selectProfile.value);
   const matched = matchSkillsToJD(p, jdText);
   const pdf = await buildResumePdfBlob(p, matched);   // PDFKit + blobStream
@@ -202,7 +202,7 @@ window.BUGS = [
   const doc = buildResumeDocBlob(p, matched);          // HTML -> application/msword
   addDownloadLink(downloadLinks, doc, name+"_Resume.doc", "Resume (Word)");
 }
-window.generateSingle = generateSingle; // async: must expose explicitly (see #12)',
+window.generateSingle = generateSingle; // async: must expose explicitly (see #12)`,
         lesson: 'When a heavy dependency (docx.js) is unavailable in the browser, prefer libraries already loaded (PDFKit) and degrade gracefully: an HTML Blob with application/msword opens cleanly in Word with zero dependencies. Always expose async handlers on window inside the load-guard block.',
         impact: 'High - The core value of the app (generating tailored resume documents) now works fully offline with no API key, producing downloadable PDF/Word/HTML/Markdown files.'
     },
@@ -216,7 +216,7 @@ window.generateSingle = generateSingle; // async: must expose explicitly (see #1
         description: 'Generation was local-only. Users who configure an AI provider key now get the model to tailor the resume summary, skills, and experience to each job description, while everyone else keeps the free local path. The integration must never block generation if the AI call fails.',
         rootCause: 'The pre-existing AIIntegration.tailorResume() was never called from the generation flow. It returns a JSON string (keys: summary, experience, skills, ats_suggestions, full_resume) that needed parsing and merging into the profile before document building.',
         resolution: 'Added tailorProfileWithAI(profile, jd, provider, mode): it calls AIIntegration.tailorResume, JSON-parses the response (falling back to treating prose as the summary), and merges summary/skills/experience into a cloned profile. generateSingle and generateBulk call it only when the selected provider isConfigured(); any AI/network error is caught and the flow falls back to local generation with a warning toast. Cost and aiUsed flags are recorded to history.',
-        codeExample: 'async function tailorProfileWithAI(profile, jd, provider, mode){
+        codeExample: `async function tailorProfileWithAI(profile, jd, provider, mode){
   const r = await AIIntegration.tailorResume(provider, profile, jd, mode);
   let ai; try { ai = JSON.parse(r.tailored); } catch { ai = { summary: r.tailored }; }
   const t = { ...profile };
@@ -225,7 +225,7 @@ window.generateSingle = generateSingle; // async: must expose explicitly (see #1
   if (Array.isArray(ai.experience) && ai.experience.length) t.experience = ai.experience;
   return { profile: t, cost: r.cost || 0, usedAI: true };
 }
-// in generateSingle: try AI -> on throw, showToast(warning) and use raw profile',
+// in generateSingle: try AI -> on throw, showToast(warning) and use raw profile`,
         lesson: 'Enhancements that depend on a remote service must be strictly additive: wrap them in try/catch and fall back to the working baseline so a failed/blocked API call never breaks the core feature. Note: calling provider APIs directly from the browser exposes keys and is subject to CORS (Gemini works via key-in-URL; OpenAI/Anthropic typically block browser CORS) — a server-side proxy would be the production-grade approach.',
         impact: 'Medium - Adds higher-quality tailored output for users with an API key, with zero risk to the free offline path.'
     },

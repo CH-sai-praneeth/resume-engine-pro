@@ -98,16 +98,21 @@ const GitHubRunner = {
     async findRun(runId, attempts = 40) {
         const cfg = this.getConfig();
         for (let i = 0; i < attempts; i++) {
-            const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs?event=workflow_dispatch&per_page=20&t=${Date.now()}`, {
-                headers: { 'Cache-Control': 'no-cache', 'If-None-Match': '' }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const run = (data.workflow_runs || []).find(r =>
-                    (r.name && r.name.includes(runId)) ||
-                    (r.display_title && r.display_title.includes(runId))
-                );
-                if (run) return run;
+            try {
+                const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs?event=workflow_dispatch&per_page=20&t=${Date.now()}`, {
+                    headers: { 'Cache-Control': 'no-cache', 'If-None-Match': '' }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const run = (data.workflow_runs || []).find(r =>
+                        (r.name && r.name.includes(runId)) ||
+                        (r.display_title && r.display_title.includes(runId))
+                    );
+                    if (run) return run;
+                }
+            } catch (_) {
+                // Transient network error (offline blip, Tracking Prevention,
+                // rate-limit reset) — do NOT abort; the run is likely fine.
             }
             await this._sleep(3000);
         }
@@ -128,11 +133,16 @@ const GitHubRunner = {
         if (onProgress) onProgress(run.status || 'queued', run, 0);
         let last = run.status;
         for (let i = 0; i < 220; i++) { // ~11 min at 3s
-            const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs/${run.id}?t=${Date.now()}`, {
-                headers: { 'Cache-Control': 'no-cache' }
-            });
-            if (res.ok) {
-                const r = await res.json();
+            let r = null;
+            try {
+                const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs/${run.id}?t=${Date.now()}`, {
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                if (res.ok) r = await res.json();
+            } catch (_) {
+                // Transient network error — keep polling, the run is still going.
+            }
+            if (r) {
                 const elapsed = Math.round((Date.now() - started) / 1000);
                 const changed = r.status !== last;
                 if (changed) last = r.status;
@@ -149,21 +159,54 @@ const GitHubRunner = {
         throw new Error('The cloud job is taking longer than usual. It is still running on GitHub — check the Actions tab; your result will be committed there when it finishes.');
     },
 
+    // ----- one-shot background check: is the run done, and if so fetch result? -----
+    // Returns { state: 'pending' | 'success' | 'failed', data?, conclusion? }.
+    // Never throws — designed for a quiet background reconciler.
+    async checkAndFetch(runId) {
+        const cfg = this.getConfig();
+        let run;
+        try { run = await this.findRun(runId, 2); } catch (_) { return { state: 'pending' }; }
+        try {
+            const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs/${run.id}?t=${Date.now()}`, {
+                headers: { 'Cache-Control': 'no-cache' }
+            });
+            if (res.ok) {
+                const r = await res.json();
+                if (r.status === 'completed') {
+                    if (r.conclusion === 'success') {
+                        try {
+                            const data = await this.fetchResult(runId);
+                            return { state: 'success', data };
+                        } catch (_) {
+                            return { state: 'success', data: null };
+                        }
+                    }
+                    return { state: 'failed', conclusion: r.conclusion };
+                }
+            }
+        } catch (_) { /* transient */ }
+        return { state: 'pending' };
+    },
+
     // ----- read the committed result file -----
     async fetchResult(runId) {
         const cfg = this.getConfig();
         const filePath = `generated/${runId}.json`;
         for (let i = 0; i < 12; i++) {
-            const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/contents/${filePath}?ref=${cfg.ref}&t=${Date.now()}`, {
-                headers: { 'Cache-Control': 'no-cache' }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const b64 = String(data.content || '').replace(/\n/g, '');
-                let txt;
-                try { txt = decodeURIComponent(escape(atob(b64))); }
-                catch (_) { txt = atob(b64); }
-                return JSON.parse(txt);
+            try {
+                const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/contents/${filePath}?ref=${cfg.ref}&t=${Date.now()}`, {
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const b64 = String(data.content || '').replace(/\n/g, '');
+                    let txt;
+                    try { txt = decodeURIComponent(escape(atob(b64))); }
+                    catch (_) { txt = atob(b64); }
+                    return JSON.parse(txt);
+                }
+            } catch (_) {
+                // Transient network error — retry below.
             }
             await this._sleep(2500);
         }

@@ -61,6 +61,9 @@ function runHealthCheck() {
 window.addEventListener('load', () => {
     console.log('PAGE LOAD EVENT FIRED');
     runHealthCheck();
+
+    // Reconcile any cloud (Ollama) runs left 'in-progress' from a prior session.
+    setTimeout(() => { try { resumePendingRuns(); } catch (_) {} }, 4000);
     
     // Also setup button event listeners as backup
     const githubBtn = document.querySelector('button[onclick*="initiateGitHubLogin"]');
@@ -1502,7 +1505,7 @@ function normalizeAIExperience(exp) {
 // fresh runner installs & runs Llama 3, then fetches the committed result and
 // maps it onto the working profile. The runner self-destructs automatically.
 // ============================================================================
-async function runOllamaInCloud(profile, jdText, statusContent) {
+async function runOllamaInCloud(profile, jdText, statusContent, histId) {
     const resumeText = buildResumeSourceText(profile);
     const model = (window.AIIntegration && AIIntegration.getOllamaConfig)
         ? (AIIntegration.getOllamaConfig().model || GitHubRunner.getConfig().model)
@@ -1512,6 +1515,10 @@ async function runOllamaInCloud(profile, jdText, statusContent) {
 
     setProg(8, 'Connecting to GitHub…');
     const { runId } = await GitHubRunner.dispatch({ resumeData: resumeText, jobDescription: jdText, model });
+
+    // Persist the runId immediately so a background monitor can reconcile this
+    // attempt (flip it to Success) even if foreground tracking is interrupted.
+    try { if (histId) { StorageManager.updateGeneration(histId, { runId }); } } catch (_) {}
 
     setProg(18, 'Launching a free, ephemeral cloud runner…');
     await GitHubRunner.waitForCompletion(runId, (status, run, elapsed) => {
@@ -1529,19 +1536,138 @@ async function runOllamaInCloud(profile, jdText, statusContent) {
         throw new Error('The model did not return clean JSON. Try again or pick a different model in Settings.');
     }
 
+    return mergeTailored(profile, aiData);
+}
+
+// Merge an AI/cloud result (summary/skills/experience) onto a clone of the profile.
+function mergeTailored(profile, aiData) {
     const tailored = { ...profile };
     if (aiData && typeof aiData.summary === 'string' && aiData.summary.trim()) {
         tailored.summary = aiData.summary.trim();
     }
-    if (Array.isArray(aiData.skills) && aiData.skills.length) {
+    if (aiData && Array.isArray(aiData.skills) && aiData.skills.length) {
         tailored.skills = aiData.skills.map(s => String(s).trim()).filter(Boolean);
     }
-    if (Array.isArray(aiData.experience) && aiData.experience.length) {
+    if (aiData && Array.isArray(aiData.experience) && aiData.experience.length) {
         const mapped = aiData.experience.map(normalizeAIExperience)
             .filter(e => e.position || e.company || e.description);
         if (mapped.length) tailored.experience = mapped;
     }
     return tailored;
+}
+
+// Build the requested document set from a (possibly AI-tailored) profile.
+// Shared by the foreground generator and the background run reconciler.
+async function buildDocumentsFromProfile(workingProfile, jdText, baseName, opts, downloadLinks) {
+    const meta = extractJobMeta(jdText);
+    const matched = matchSkillsToJD(normalizeProfile(workingProfile), jdText);
+    let count = 0;
+    if (opts.wantResume) {
+        const pdfBlob = await buildResumePdfBlob(workingProfile, matched);
+        addDownloadLink(downloadLinks, pdfBlob, `${baseName}_Resume.pdf`, 'Resume (PDF)');
+        const docBlob = buildResumeDocBlob(workingProfile, matched);
+        addDownloadLink(downloadLinks, docBlob, `${baseName}_Resume.doc`, 'Resume (Word)');
+        count++;
+    }
+    if (opts.wantCover) {
+        const clBlob = buildCoverLetterDocBlob(workingProfile, meta.title, meta.company, jdText);
+        addDownloadLink(downloadLinks, clBlob, `${baseName}_CoverLetter.doc`, 'Cover Letter (Word)');
+        count++;
+    }
+    if (opts.wantPortfolio && window.PortfolioTemplates) {
+        try {
+            const html = PortfolioTemplates.generatePortfolio(normalizeProfile(workingProfile), opts.template || 'minimalist', 0);
+            addDownloadLink(downloadLinks, new Blob([html], { type: 'text/html' }), `${baseName}_Portfolio.html`, 'Portfolio (HTML)');
+            count++;
+        } catch (e) {
+            console.warn('Portfolio generation failed:', e.message);
+        }
+    }
+    if (opts.wantJobDetails) {
+        addDownloadLink(downloadLinks, buildJobDetailsBlob(meta.title, meta.company, jdText), `${baseName}_JobDetails.md`, 'Job Details (Markdown)');
+        count++;
+    }
+    return { count, matched };
+}
+
+// ---------------------------------------------------------------------------
+// Background reconciliation for cloud (Ollama) runs.
+// If foreground tracking was interrupted (network blip, page reload, the user
+// navigated away), any history entry left 'in-progress' with a runId is checked
+// here. When the GitHub run completes we flip it to Success (and rebuild the
+// downloadable documents) or Failed — so the status never stays wrong.
+// ---------------------------------------------------------------------------
+let _resumeTimer = null;
+
+async function resumePendingRuns() {
+    if (!(window.GitHubRunner && GitHubRunner.hasToken && GitHubRunner.hasToken())) return;
+    let history;
+    try { history = StorageManager.getHistory(50); } catch (_) { return; }
+    const pending = (history || []).filter(h => h && h.status === 'in-progress' && h.runId);
+    if (!pending.length) {
+        if (_resumeTimer) { clearInterval(_resumeTimer); _resumeTimer = null; }
+        return;
+    }
+    for (const item of pending) {
+        let res;
+        try { res = await GitHubRunner.checkAndFetch(item.runId); }
+        catch (_) { continue; }
+        if (!res) continue;
+        if (res.state === 'success') {
+            await finalizeResumedRun(item, res.data);
+        } else if (res.state === 'failed') {
+            try {
+                StorageManager.updateGeneration(item.id, { status: 'failed', error: 'Cloud job concluded ' + (res.conclusion || 'failure') + '. See the Actions logs.' });
+                displayHistory();
+            } catch (_) {}
+            showToast('An earlier Ollama cloud run failed — see History for details', 'error');
+        }
+        // 'pending' -> leave as-is; we'll check again on the next tick.
+    }
+    if (!_resumeTimer) _resumeTimer = setInterval(resumePendingRuns, 30000);
+}
+
+function scheduleResumeCheck() {
+    // Near-term first check; resumePendingRuns then sets up its own interval.
+    setTimeout(() => { try { resumePendingRuns(); } catch (_) {} }, 15000);
+}
+
+async function finalizeResumedRun(item, aiData) {
+    try {
+        if (!aiData || aiData._raw) {
+            StorageManager.updateGeneration(item.id, { status: 'failed', error: 'Model did not return clean JSON.' });
+            displayHistory();
+            return;
+        }
+        const profile = item.profileId ? StorageManager.getProfile(item.profileId) : null;
+        if (!profile) {
+            // Can't rebuild documents without the profile, but the run succeeded and
+            // the result is committed in the repo — mark it Success regardless.
+            StorageManager.updateGeneration(item.id, { status: 'success', error: '', jd: undefined, genOpts: undefined });
+            displayHistory();
+            showToast('An earlier Ollama cloud resume finished successfully (see History)', 'success');
+            return;
+        }
+        const tailored = mergeTailored(profile, aiData);
+        const opts = item.genOpts || { wantResume: true };
+        const baseName = item.baseName || safeFileName(profile.displayName || profile.name);
+        const downloadLinks = document.getElementById('downloadLinks');
+        const statusContent = document.getElementById('statusContent');
+        const statusBox = document.getElementById('generationStatus');
+        if (downloadLinks) downloadLinks.innerHTML = '';
+        const { count, matched } = await buildDocumentsFromProfile(tailored, item.jd || '', baseName, opts, downloadLinks);
+        if (statusBox) statusBox.style.display = 'block';
+        if (downloadLinks) downloadLinks.style.display = 'block';
+        if (statusContent) statusContent.innerHTML = `<p>✅ Your earlier Ollama cloud resume is ready (${count} document set${count === 1 ? '' : 's'}). Download below.</p>`;
+        StorageManager.updateGeneration(item.id, {
+            status: 'success', error: '', outputs: count, matchedSkills: matched.length, aiUsed: true,
+            jd: undefined, genOpts: undefined
+        });
+        displayHistory();
+        showToast('Your Ollama cloud resume is ready — open the Generate tab to download', 'success');
+    } catch (e) {
+        console.warn('finalizeResumedRun failed:', e.message);
+    }
 }
 
 // Build the richest possible plain-text source for the model: the full original
@@ -1642,14 +1768,27 @@ async function generateSingle() {
 
         // Record this attempt up-front so EVERY try is logged (success or not).
         try {
+            const isOllama = provider === 'ollama';
             histId = StorageManager.saveGeneration({
                 profile: profile.displayName || profile.name || 'Profile',
+                profileId,
                 jobTitle: meta.title || '',
                 provider: provider || 'local',
                 mode,
                 status: 'in-progress',
                 cost: 0,
-                outputs: 0
+                outputs: 0,
+                ...(isOllama ? {
+                    jd: jdText.slice(0, 16000),
+                    baseName,
+                    genOpts: {
+                        wantResume: !!wantResume,
+                        wantCover: !!wantCover,
+                        wantPortfolio: !!wantPortfolio,
+                        wantJobDetails: !!wantJobDetails,
+                        template
+                    }
+                } : {})
             });
             displayHistory();
         } catch (_) { /* non-fatal */ }
@@ -1665,11 +1804,24 @@ async function generateSingle() {
                 return;
             }
             try {
-                workingProfile = await runOllamaInCloud(profile, jdText, statusContent);
+                workingProfile = await runOllamaInCloud(profile, jdText, statusContent, histId);
                 aiUsed = true;
             } catch (e) {
                 console.warn('Ollama cloud generation failed:', e.message);
-                try { StorageManager.updateGeneration(histId, { status: 'failed', provider: 'ollama', error: e.message }); displayHistory(); } catch (_) {}
+                const msg = e.message || '';
+                // "definitive" = the run actually concluded as a failure or returned
+                // bad output. Anything else (Failed to fetch, timeout, not-yet-listed)
+                // means the run is still going — keep it in-progress so the background
+                // monitor can flip it to Success when it completes.
+                const definitive = /finished as|did not return clean JSON/i.test(msg);
+                try {
+                    if (definitive) {
+                        StorageManager.updateGeneration(histId, { status: 'failed', provider: 'ollama', error: msg });
+                    } else {
+                        StorageManager.updateGeneration(histId, { status: 'in-progress', provider: 'ollama', error: '' });
+                    }
+                    displayHistory();
+                } catch (_) {}
                 const actionsUrl = (window.GitHubRunner && GitHubRunner.actionsUrl) ? GitHubRunner.actionsUrl() : '#';
                 if (statusContent) statusContent.innerHTML = `
                     <div class="cloud-error">
@@ -1684,6 +1836,7 @@ async function generateSingle() {
                         <p class="cloud-error-cost">💸 <strong>No cost concern:</strong> this repo is public, so GitHub Actions minutes are <strong>unlimited and free</strong>. The runner is temporary and shuts itself down automatically when the job finishes (or after 15 min max) — there is no server left running to bill you.</p>
                     </div>`;
                 showToast('Ollama cloud job is still running or needs attention — see the options shown', 'warning');
+                if (!definitive) scheduleResumeCheck();
                 return;
             }
             if (statusContent) statusContent.innerHTML = '<p>⏳ Building your documents...</p>';
@@ -1701,33 +1854,12 @@ async function generateSingle() {
             if (statusContent) statusContent.innerHTML = '<p>⏳ Building your documents...</p>';
         }
 
-        const matched = matchSkillsToJD(normalizeProfile(workingProfile), jdText);
-
-        if (wantResume) {
-            const pdfBlob = await buildResumePdfBlob(workingProfile, matched);
-            addDownloadLink(downloadLinks, pdfBlob, `${baseName}_Resume.pdf`, 'Resume (PDF)');
-            const docBlob = buildResumeDocBlob(workingProfile, matched);
-            addDownloadLink(downloadLinks, docBlob, `${baseName}_Resume.doc`, 'Resume (Word)');
-            count++;
-        }
-        if (wantCover) {
-            const clBlob = buildCoverLetterDocBlob(workingProfile, meta.title, meta.company, jdText);
-            addDownloadLink(downloadLinks, clBlob, `${baseName}_CoverLetter.doc`, 'Cover Letter (Word)');
-            count++;
-        }
-        if (wantPortfolio && window.PortfolioTemplates) {
-            try {
-                const html = PortfolioTemplates.generatePortfolio(normalizeProfile(workingProfile), template, 0);
-                addDownloadLink(downloadLinks, new Blob([html], { type: 'text/html' }), `${baseName}_Portfolio.html`, 'Portfolio (HTML)');
-                count++;
-            } catch (e) {
-                console.warn('Portfolio generation failed:', e.message);
-            }
-        }
-        if (wantJobDetails) {
-            addDownloadLink(downloadLinks, buildJobDetailsBlob(meta.title, meta.company, jdText), `${baseName}_JobDetails.md`, 'Job Details (Markdown)');
-            count++;
-        }
+        const { count: builtCount, matched } = await buildDocumentsFromProfile(
+            workingProfile, jdText, baseName,
+            { wantResume, wantCover, wantPortfolio, wantJobDetails, template },
+            downloadLinks
+        );
+        count = builtCount;
 
         // Update the history record for this attempt (now that we know the outcome).
         try {

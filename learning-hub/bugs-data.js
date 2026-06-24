@@ -447,5 +447,42 @@ StorageManager.updateGeneration(id, { status:'failed', error: e.message });
 if (onProgress && (changed || i % 7 === 0)) onProgress(r.status, r, elapsedSec);`,
         lesson: 'When a CI job is the source of truth for an artifact, never leave its output directory in .gitignore - use git add -f (or a !generated/ un-ignore) or the commit step silently dies AFTER the expensive work, stranding the result in a runner that then self-destructs. For long async jobs, a status-change-only progress callback looks frozen; add a time-based heartbeat with elapsed time and tell users they can leave the tab. And treat history as an audit log, not a success log: record every attempt the moment it starts, give each a stable id, and patch it to success/failed (with the reason) so a refresh never erases evidence of what the user tried. A table beats cards once you track status + failure reasons.',
         impact: 'High - No more silently lost resumes (artifact always commits), the progress card stays alive with elapsed-time heartbeats and reassures users they can multitask, and every generation attempt - successful, failed, or in-progress - is now permanently logged in a clear table with provider, mode, status, cost, timestamp, outputs, and the failure reason.'
+    },
+    {
+        id: 26,
+        title: 'Cloud Run Marked Failed Forever: One Transient "Failed to fetch" Aborted the Flow + No Auto-Reconciliation to Success',
+        severity: 'high',
+        status: 'Fixed',
+        role: 'Frontend Developer / SRE',
+        fixTime: '90 min',
+        description: 'A user noticed that the very first Generate Now showed a start-failed notification, yet the GitHub Actions tab showed the run actually started and was running healthy. They asked the honest question: if that run comes back green from Actions, will the history status move from Failed to Success? The truthful answer was NO - it stayed Failed permanently. Two problems caused this. (1) A single transient browser fetch rejection (Failed to fetch, from Edge Tracking Prevention, a network blip, or GitHub API eventual-consistency) threw out of the polling loop and aborted the whole foreground flow even though the dispatch had succeeded and the run was alive. (2) There was no mechanism that ever revisited an in-progress or failed entry to flip it to Success once the real run completed, so the UI stayed wrong forever.',
+        rootCause: 'The polling helpers treated any thrown error as fatal. findRun, waitForCompletion, and fetchResult wrapped only the not-ok HTTP branch, not the fetch() call itself - so a rejected promise (Failed to fetch) bubbled straight up and rejected the generate flow. Separately, generation was strictly fire-and-forget in the foreground: once the await chain rejected, the history entry was patched to Failed and nothing was ever scheduled to re-check the run. The browser had a runId in hand but never persisted it against the attempt, so even a manual revisit had nothing to reconcile against.',
+        resolution: 'Resilience: every fetch() in findRun, waitForCompletion, and fetchResult is now wrapped in try/catch that CONTINUES the loop on a transient throw (treating it like a not-yet-ready poll) instead of rejecting; only a definitive non-success conclusion throws. Reconciliation: a new checkAndFetch(runId) returns pending, success (with data), or failed without ever throwing. The foreground now persists the runId onto the in-progress history record immediately after dispatch, and classifies catch errors: a definitive failure marks Failed, but an indeterminate one (Failed to fetch / timeout) KEEPS the record in-progress. A background resumePendingRuns() scans history for in-progress entries that carry a runId, calls checkAndFetch, and on success rebuilds the documents (mergeTailored + buildDocumentsFromProfile, both extracted for reuse) and flips the record to Success - on page load, after an interrupted attempt, and on a 30s interval until none remain.',
+        codeExample: `// Polling is now resilient: a transient throw CONTINUES, it does not abort.
+let r = null;
+try {
+    const res = await api(\`/actions/runs/\${id}\`);
+    r = await res.json();
+} catch (_) { r = null; }            // Failed to fetch -> treat as not-ready
+if (r && r.status === 'completed' && r.conclusion !== 'success') {
+    throw new Error(\`Run finished as \${r.conclusion}\`); // only definitive failure throws
+}
+
+// Persist the runId so a background monitor can finish the job later.
+const { runId } = await GitHubRunner.dispatch({ ... });
+StorageManager.updateGeneration(histId, { runId });
+
+// Auto-flip in-progress -> Success when the real Actions run completes.
+async function resumePendingRuns() {
+    const pending = StorageManager.getHistory(50)
+        .filter(h => h.status === 'in-progress' && h.runId);
+    for (const item of pending) {
+        const res = await GitHubRunner.checkAndFetch(item.runId); // never throws
+        if (res.state === 'success') await finalizeResumedRun(item, res.data);
+        else if (res.state === 'failed') StorageManager.updateGeneration(item.id, { status: 'failed' });
+    }
+}`,
+        lesson: 'A polling loop must tolerate transient network throws, not only non-ok HTTP responses - wrap the fetch() itself and continue, because one Failed to fetch from tracking prevention or eventual consistency should never abort a job that is genuinely running. When the real source of truth (a CI run) outlives the browser tab, the UI status is just a cached guess: persist the run identifier the moment you dispatch, keep indeterminate attempts in-progress instead of failing them, and run a background reconciler that flips the record to its true terminal state (and rebuilds any derived artifacts) on load and on an interval. Make every long-running side effect resumable and idempotent so a refresh, a blip, or navigating away never strands the user with a permanently wrong status.',
+        impact: 'High - A healthy cloud run now reliably reconciles to Success even if the foreground poll hiccuped, the documents are rebuilt and offered for download automatically, and users can navigate away or reload without losing the result or seeing a false Failed.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

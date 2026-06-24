@@ -728,12 +728,14 @@ function displayHistory() {
         let actionsCell = '—';
         if (item.id) {
             if (status === 'success') {
+                const dl = `<button class="action-btn" title="Rebuild & download the documents" onclick="downloadHistoryEntry('${item.id}', this)">⬇ Download</button>`;
                 if (item.published && item.repoUrl) {
-                    actionsCell = `<a href="${item.repoUrl}" target="_blank" rel="noopener" class="hist-link">Repo ✓</a>`
+                    actionsCell = dl + ' '
+                        + `<a href="${item.repoUrl}" target="_blank" rel="noopener" class="hist-link">Repo ✓</a>`
                         + (item.pagesUrl ? ` · <a href="${item.pagesUrl}" target="_blank" rel="noopener" class="hist-link">Live</a>` : '')
                         + ` <button class="action-btn" title="Publish again (updates files)" onclick="publishHistoryEntry('${item.id}', this)">📤</button>`;
                 } else {
-                    actionsCell = `<button class="action-btn" title="Publish to GitHub & add to tracker" onclick="publishHistoryEntry('${item.id}', this)">📤 Publish</button>`;
+                    actionsCell = dl + ` <button class="action-btn" title="Publish to GitHub & add to tracker" onclick="publishHistoryEntry('${item.id}', this)">📤 Publish</button>`;
                 }
             } else if (status === 'in-progress' || status === 'failed') {
                 actionsCell = `<button class="action-btn" title="Re-check the cloud run" onclick="recheckHistoryEntry('${item.id}', this)">🔄 Re-check</button>`;
@@ -1755,6 +1757,55 @@ async function finalizeResumedRun(item, aiData) {
         } catch (_) {}
     }
 }
+
+// ---------------------------------------------------------------------------
+// Rebuild a finished generation's documents and download them. The Re-check /
+// finalize path renders the download links into the Generate tab, but if the
+// user navigated away (or just wants them again later) the files are gone, so
+// every successful row gets a Download button that regenerates and downloads.
+// ---------------------------------------------------------------------------
+async function downloadHistoryEntry(histId, btnEl) {
+    const item = (StorageManager.getHistory(100) || []).find(h => h.id === histId);
+    if (!item) { showToast('Could not find that generation', 'error'); return; }
+    const profile = item.profileId ? StorageManager.getProfile(item.profileId) : null;
+    if (!profile) { showToast('The profile for this entry was not found — cannot rebuild documents', 'error'); return; }
+    const origLabel = btnEl ? btnEl.innerHTML : '';
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Building…'; }
+    try {
+        const jd = item.jd || '';
+        const opts = item.genOpts || { wantResume: true, wantCover: true, wantPortfolio: true, wantJobDetails: true, template: 'minimalist' };
+        const baseName = item.baseName || safeFileName(profile.displayName || profile.name);
+        // For Ollama entries re-fetch the committed AI result so the docs are tailored.
+        let workingProfile = profile;
+        if (item.provider === 'ollama' && item.runId) {
+            try {
+                const aiData = await GitHubRunner.fetchResult(item.runId);
+                if (aiData && !aiData._raw) workingProfile = mergeTailored(profile, aiData);
+            } catch (_) { /* fall back to base profile */ }
+        }
+        const downloadLinks = document.getElementById('downloadLinks');
+        const statusContent = document.getElementById('statusContent');
+        const statusBox = document.getElementById('generationStatus');
+        if (downloadLinks) downloadLinks.innerHTML = '';
+        const { count } = await buildDocumentsFromProfile(workingProfile, jd, baseName, opts, downloadLinks);
+        if (statusBox) statusBox.style.display = 'block';
+        if (downloadLinks) downloadLinks.style.display = 'block';
+        if (statusContent) statusContent.innerHTML = `<p>✅ ${count} document${count === 1 ? '' : 's'} ready for <strong>${escHtml(baseName)}</strong>. Use the buttons below if a download did not start.</p>`;
+        switchMainTab('generator');
+        // Auto-start the downloads (staggered so the browser does not coalesce them).
+        if (downloadLinks) {
+            const links = downloadLinks.querySelectorAll('a[download]');
+            links.forEach((a, i) => setTimeout(() => a.click(), i * 400));
+        }
+        showToast('Documents rebuilt — downloading now (also on the Generate tab)', 'success');
+    } catch (e) {
+        console.error('Download rebuild failed:', e);
+        showToast('Could not rebuild documents: ' + e.message, 'error');
+    } finally {
+        if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = origLabel || '⬇ Download'; }
+    }
+}
+window.downloadHistoryEntry = downloadHistoryEntry;
 
 // ---------------------------------------------------------------------------
 // PUBLISH a generation to the user's GitHub account: create a role-named repo,

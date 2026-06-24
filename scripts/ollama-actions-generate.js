@@ -61,28 +61,50 @@ Respond with ONE valid minified JSON object and NOTHING else. Use EXACTLY these 
 Return ONLY the JSON object.`;
 }
 
-async function callOllama(prompt) {
+async function callOllama(prompt, attempt = 1) {
     const url = ENDPOINT + '/v1/chat/completions';
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            model: MODEL,
-            temperature: 0.4,
-            stream: false,
-            messages: [
-                { role: 'system', content: 'You are an expert resume writer and ATS specialist. Respond with ONLY a single valid minified JSON object — no markdown, no code fences.' },
-                { role: 'user', content: prompt }
-            ]
-        })
-    });
-    if (!res.ok) {
-        throw new Error(`Ollama HTTP ${res.status} — is the server running? Try: ollama serve`);
+    // The free CPU runner can take several minutes for the first inference
+    // (model load + generation), so give it a generous abort timeout.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 9 * 60 * 1000);
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+                model: MODEL,
+                temperature: 0.4,
+                stream: false,
+                keep_alive: '5m',
+                // Cap the context window so an 8B model is far less likely to be
+                // OOM-killed on the ~16 GB free runner mid-generation.
+                options: { num_ctx: 4096 },
+                messages: [
+                    { role: 'system', content: 'You are an expert resume writer and ATS specialist. Respond with ONLY a single valid minified JSON object — no markdown, no code fences.' },
+                    { role: 'user', content: prompt }
+                ]
+            })
+        });
+        if (!res.ok) {
+            throw new Error(`Ollama HTTP ${res.status} — is the server running? Try: ollama serve`);
+        }
+        const data = await res.json();
+        return data?.choices?.[0]?.message?.content
+            ?? data?.message?.content
+            ?? (typeof data === 'string' ? data : JSON.stringify(data));
+    } catch (err) {
+        // "fetch failed" / aborted usually means the server dropped the
+        // connection (often a transient hiccup or memory pressure). Retry once.
+        if (attempt < 2) {
+            console.warn(`Ollama call failed (${err.message}); retrying once in 5s...`);
+            await new Promise(r => setTimeout(r, 5000));
+            return callOllama(prompt, attempt + 1);
+        }
+        throw err;
+    } finally {
+        clearTimeout(timer);
     }
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content
-        ?? data?.message?.content
-        ?? (typeof data === 'string' ? data : JSON.stringify(data));
 }
 
 function extractJson(raw) {

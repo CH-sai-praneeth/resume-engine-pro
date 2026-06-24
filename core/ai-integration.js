@@ -76,7 +76,7 @@ const AIIntegration = {
         ollama: {
             name: 'Ollama (Llama 3 — free, runs on your machine/Codespace)',
             endpoint: 'http://localhost:11434/v1/chat/completions',
-            model: 'llama3',
+            model: 'llama3.2',
             free: true,
             noKey: true,
             local: true,

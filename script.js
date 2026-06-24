@@ -1600,8 +1600,20 @@ async function generateSingle() {
                 aiUsed = true;
             } catch (e) {
                 console.warn('Ollama cloud generation failed:', e.message);
-                if (statusContent) statusContent.innerHTML = `<p>❌ Ollama cloud generation failed: ${escHtml(e.message)}</p>`;
-                showToast('Ollama cloud generation failed', 'error');
+                const actionsUrl = (window.GitHubRunner && GitHubRunner.actionsUrl) ? GitHubRunner.actionsUrl() : '#';
+                if (statusContent) statusContent.innerHTML = `
+                    <div class="cloud-error">
+                        <p>❌ <strong>Ollama cloud generation didn't complete.</strong></p>
+                        <p>${escHtml(e.message)}</p>
+                        <p style="margin-top:0.6rem;"><strong>What to do:</strong></p>
+                        <ol class="cloud-error-steps">
+                            <li>Open your <a href="${actionsUrl}" target="_blank" rel="noopener">Actions tab</a> and find the latest <em>Ollama Resume</em> run. If it's still running (yellow dot), just wait — it can take ~2–4 min on the free CPU runner.</li>
+                            <li>Click <strong>Generate Now</strong> again to start a fresh attempt (it's free). With the latest fix the app now waits longer and bypasses GitHub's API cache, so it should attach correctly.</li>
+                            <li>If a run shows a red ✗, click it to read the logs (usually a token-permission or model-name issue), fix it in <strong>Settings → Ollama</strong>, and retry. Tip: use model <code>llama3.2</code> (3B) — it finishes faster than <code>llama3</code> (8B).</li>
+                        </ol>
+                        <p class="cloud-error-cost">💸 <strong>No cost concern:</strong> this repo is public, so GitHub Actions minutes are <strong>unlimited and free</strong>. The runner is temporary and shuts itself down automatically when the job finishes (or after 15 min max) — there is no server left running to bill you.</p>
+                    </div>`;
+                showToast('Ollama cloud job is still running or needs attention — see the steps shown', 'warning');
                 return;
             }
             if (statusContent) statusContent.innerHTML = '<p>⏳ Building your documents...</p>';
@@ -1905,12 +1917,12 @@ function renderAISettings() {
             </div>
         </div>
         <div class="form-group">
-            <label>Model (3B is fast on the free CPU runner)</label>
-            <input type="text" id="ollamaModel" placeholder="llama3.2" value="${escHtml(oll.model || ghCfg.model)}" />
+            <label>Model — recommended <code>llama3.2</code> (3B, fast &amp; reliable on the free CPU runner)</label>
+            <input type="text" id="ollamaModel" placeholder="llama3.2" value="${escHtml((oll.model === 'llama3' ? 'llama3.2' : (oll.model || ghCfg.model)))}" />
         </div>
         <button class="btn btn-secondary" onclick="saveOllamaCloudConfig()">Save Ollama Cloud Settings</button>
         ${hasTok ? '<button class="btn btn-secondary" onclick="clearOllamaToken()">Remove Token</button>' : ''}
-        <small>Requires the <code>ollama-resume.yml</code> workflow in your repo (already included). Larger models (e.g. <code>llama3</code> 8B) work but run slower on the free runner.</small>
+        <small>💸 This repo is <strong>public</strong>, so GitHub Actions minutes are <strong>unlimited &amp; free ($0)</strong>. The runner is temporary and shuts itself down when the job finishes (15-min max) — nothing keeps running, nothing is billed. Requires the <code>ollama-resume.yml</code> workflow (already included). Avoid <code>llama3</code> (8B) — it can run out of memory mid-generation on the free runner; stick with <code>llama3.2</code>.</small>
     </div>`;
 
     // Custom / BYO OpenAI-compatible provider

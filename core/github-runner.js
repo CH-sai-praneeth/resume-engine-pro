@@ -93,10 +93,14 @@ const GitHubRunner = {
     },
 
     // ----- locate the run we just triggered (dispatch returns no id) -----
-    async findRun(runId, attempts = 20) {
+    // GitHub's run-list endpoint is eventually consistent and browsers/CDNs
+    // cache it, so we add a cache-buster + no-cache header and poll generously.
+    async findRun(runId, attempts = 40) {
         const cfg = this.getConfig();
         for (let i = 0; i < attempts; i++) {
-            const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs?event=workflow_dispatch&per_page=30`);
+            const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs?event=workflow_dispatch&per_page=20&t=${Date.now()}`, {
+                headers: { 'Cache-Control': 'no-cache', 'If-None-Match': '' }
+            });
             if (res.ok) {
                 const data = await res.json();
                 const run = (data.workflow_runs || []).find(r =>
@@ -107,7 +111,13 @@ const GitHubRunner = {
             }
             await this._sleep(3000);
         }
-        throw new Error('Started the cloud job but could not locate the run. Check the repo Actions tab.');
+        throw new Error('The cloud job was started but is not showing in the run list yet (GitHub can lag ~1–2 min). It is almost certainly still running — open the Actions tab to watch it, then click Generate again to re-attach once it appears.');
+    },
+
+    // Convenient link to the repo's Actions tab for this workflow.
+    actionsUrl() {
+        const cfg = this.getConfig();
+        return `https://github.com/${cfg.owner}/${cfg.repo}/actions/workflows/${encodeURIComponent(cfg.workflow)}`;
     },
 
     // ----- poll until the run completes -----

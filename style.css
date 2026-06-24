@@ -861,6 +861,77 @@ select option {
     margin-bottom: 0.5rem;
 }
 
+/* Links inside provider cards need a bright, readable color on the dark card */
+.ai-provider-card a {
+    color: #38e0ff;
+    text-decoration: underline;
+    font-weight: 600;
+}
+.ai-provider-card a:hover {
+    color: #8af3ff;
+}
+
+/* Tidy, aligned layout for the Ollama cloud card (and the others) */
+.ai-provider-card p {
+    line-height: 1.55;
+    margin-bottom: 0.75rem;
+}
+.ai-provider-card .form-group {
+    margin-bottom: 0.9rem;
+}
+.ai-provider-card .form-group label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.85rem;
+    color: #cfe9ff;
+}
+.ai-provider-card .form-row {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.9rem;
+}
+.ai-provider-card input,
+.ai-provider-card select {
+    width: 100%;
+    box-sizing: border-box;
+}
+.ai-provider-card .btn {
+    margin: 0.25rem 0.5rem 0.25rem 0;
+    vertical-align: middle;
+}
+.ai-provider-card small {
+    display: block;
+    margin-top: 0.85rem;
+    color: #9fb3c8;
+    line-height: 1.5;
+}
+
+/* Actionable failure card for the Ollama cloud generator */
+.cloud-error {
+    color: #f3d9d9;
+    line-height: 1.6;
+}
+.cloud-error a {
+    color: #38e0ff;
+    font-weight: 600;
+    text-decoration: underline;
+}
+.cloud-error-steps {
+    margin: 0.4rem 0 0.6rem 1.1rem;
+    padding: 0;
+    color: #e6e6e6;
+}
+.cloud-error-steps li {
+    margin-bottom: 0.5rem;
+}
+.cloud-error-cost {
+    background: rgba(0, 204, 0, 0.08);
+    border: 1px solid rgba(0, 204, 0, 0.25);
+    border-radius: 6px;
+    padding: 0.7rem 0.9rem;
+    color: #cfeccf;
+    margin-top: 0.6rem;
+}
+
 .provider-status {
     display: flex;
     align-items: center;

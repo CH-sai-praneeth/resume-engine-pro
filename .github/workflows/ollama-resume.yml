@@ -73,6 +73,14 @@ jobs:
           OLLAMA_ENDPOINT: http://localhost:11434
         run: node scripts/ollama-actions-generate.js
 
+      - name: Show Ollama log on failure
+        if: failure()
+        run: |
+          echo "===== ollama.log (tail) ====="
+          tail -n 80 ollama.log || echo "no ollama.log found"
+          echo "===== memory ====="
+          free -h || true
+
       - name: Commit the result back to the repository
         run: |
           git config user.name "resume-engine-bot"

@@ -397,5 +397,30 @@ const r = await fetch(\`.../contents/generated/\${runId}.json?ref=master\`);
 const aiData = JSON.parse(decodeURIComponent(escape(atob(r.content))));`,
         lesson: 'A static site cannot depend on a localhost daemon. To run a free local-style model (Ollama/Llama 3) without any server, trigger an ephemeral CI runner (GitHub Actions workflow_dispatch) that does the heavy lifting and commits the artifact back - then poll + fetch from the browser. Prefer Actions over Codespaces for "create node -> run -> commit -> destroy" because Actions runners self-destruct automatically. Keep workflow_dispatch inputs under ~64KB, set run-name to the run id so the dispatch can be located (the API returns no run id), and store the PAT scoped to a single repo since it lives in the browser.',
         impact: 'High - Ollama now works with zero local setup: one-time GitHub token, then click Generate. Eliminates the ERR_CONNECTION_REFUSED failures, gives a transparent live progress card, and runs entirely on free, self-destructing infrastructure at $0 cost.'
+    },
+    {
+        id: 24,
+        title: 'Ollama Cloud Run "Could Not Be Located" + 8B Model OOM-Killed Mid-Generation',
+        severity: 'high',
+        status: 'Fixed',
+        role: 'Platform / DevOps / Frontend Developer',
+        fixTime: '60 min',
+        description: 'After the cloud Ollama pipeline went live, two failures surfaced in real use: (1) the browser reported "Started the cloud job but could not locate the run. Check the repo Actions tab." even though the run WAS created, and (2) the GitHub Actions job itself failed at the generate step with "Generation failed: fetch failed" after ~5 minutes. Users had no guidance on what to do and worried a server was left running and billing them.',
+        rootCause: 'Two distinct issues. (1) findRun polled the /actions/runs list for only 20x3s = 60s, and the browser/CDN cached that GET response, so the newly-created run did not appear inside the window even though dispatch + run-naming were correct (display_title/name both contained the runId). (2) The user had selected llama3 (8B); on the free CPU runner (~16GB RAM) the model was OOM-killed while loading/generating, dropping the TCP connection and surfacing in Node as a generic "fetch failed".',
+        resolution: 'Hardened both layers. Client: findRun now polls up to 40x3s (~2 min) and adds a cache-buster query param + Cache-Control: no-cache header to defeat stale list responses; the timeout error is now reassuring and actionable. Added an actionable failure card (direct Actions-tab link, wait/retry steps, explicit "public repo = free, runner self-destructs, no cost" note). Runner: default model switched to llama3.2 (3B), callOllama now uses an AbortController timeout (9 min), keep_alive, a capped num_ctx of 4096, and retries once on a dropped connection. Workflow gained an if: failure() step that dumps the tail of ollama.log + free -h for future diagnosis. Settings card migrates a saved llama3 to llama3.2 and warns against 8B.',
+        codeExample: `// findRun: defeat eventual-consistency + browser caching
+const res = await this.api(
+  \`/repos/\${owner}/\${repo}/actions/runs?event=workflow_dispatch&per_page=20&t=\${Date.now()}\`,
+  { headers: { 'Cache-Control': 'no-cache', 'If-None-Match': '' } }
+); // poll up to 40 x 3s
+
+// callOllama: survive a slow/heavy free CPU runner
+const controller = new AbortController();
+const timer = setTimeout(() => controller.abort(), 9 * 60 * 1000);
+fetch(url, { signal: controller.signal, body: JSON.stringify({
+  model, stream:false, keep_alive:'5m', options:{ num_ctx:4096 }, messages
+})}); // retry once on "fetch failed"; default model = llama3.2 (3B), NOT llama3 (8B)`,
+        lesson: 'GitHub run-list API is eventually consistent AND cacheable - when locating a just-dispatched run from the browser, always add a cache-buster + no-cache header and poll generously (minutes, not seconds). Match a free CPU CI runner memory budget: a 3B model (llama3.2) is the safe default; an 8B model (llama3) can be OOM-killed mid-inference and surface only as a generic "fetch failed", so cap num_ctx, set an AbortController timeout, retry once, and dump the server log on failure. Finally, when a long-running cloud job can fail, the UX must tell the user exactly what to do (link to the run, wait/retry) and reassure them about cost - public-repo Actions are free and the runner self-destructs.',
+        impact: 'High - The cloud Ollama flow is now resilient end-to-end: runs are reliably located despite API lag, generation no longer crashes from OOM on the default model, failures give clear recovery steps with a direct Actions link, and users are explicitly reassured there is no lingering server and $0 cost.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

@@ -87,7 +87,7 @@ window.showBugDetail = function(bugId) {
         <p>${bug.resolution}</p>
         
         <h4>Code Changes</h4>
-        <div class="code-block">${bug.codeExample}</div>
+        ${window.renderCodeBlock(bug.codeExample)}
         
         <h4>Lesson Learned</h4>
         <p><strong>💡</strong> ${bug.lesson}</p>
@@ -161,6 +161,43 @@ window.escapeCode = function(str) {
         .replace(/>/g, '&gt;');
 };
 
+// Reusable code block: IDE-style multi-line formatting (<pre>) with a copy
+// button that appears on hover. Used by BOTH the bug and feature trackers.
+window.renderCodeBlock = function(code) {
+    return `<div class="code-wrap">
+        <button class="copy-btn" type="button" title="Copy code" onclick="window.copyCode(this)">📋 Copy</button>
+        <pre class="code-block code-pre"><code>${window.escapeCode(code)}</code></pre>
+    </div>`;
+};
+
+window.copyCode = function(btn) {
+    const wrap = btn && btn.closest('.code-wrap');
+    const codeEl = wrap && wrap.querySelector('code');
+    if (!codeEl) return;
+    const text = codeEl.textContent;
+    const done = () => {
+        const original = btn.innerHTML;
+        btn.innerHTML = '✓ Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.innerHTML = original; btn.classList.remove('copied'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+    } else {
+        fallbackCopy(text, done);
+    }
+    function fallbackCopy(str, cb) {
+        const ta = document.createElement('textarea');
+        ta.value = str;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); cb(); } catch (_) {}
+        document.body.removeChild(ta);
+    }
+};
+
 window.featureStatusIcon = function(status) {
     if (status === 'Shipped') return '✅ ';
     if (status === 'In Progress') return '🔄 ';
@@ -224,7 +261,7 @@ window.showFeatureDetail = function(featureId) {
         <p>${f.solution}</p>
 
         <h4>Code</h4>
-        <pre class="code-block code-pre"><code>${window.escapeCode(f.codeExample)}</code></pre>
+        ${window.renderCodeBlock(f.codeExample)}
 
         <h4>Lesson Learned</h4>
         <p><strong>💡</strong> ${f.lesson}</p>

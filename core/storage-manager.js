@@ -265,6 +265,47 @@ const StorageManager = {
             }
         }
         return (total / 1024 / 1024).toFixed(2) + ' MB';
+    },
+
+    // ========================================================================
+    // FULL BACKUP / RESTORE (every key under this app's prefix)
+    // ========================================================================
+
+    exportAll() {
+        const data = {};
+        for (let key in localStorage) {
+            if (key.startsWith(this.PREFIX)) {
+                data[key] = localStorage.getItem(key);
+            }
+        }
+        return {
+            app: 'Resume Engine Pro',
+            type: 'full-backup',
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            keyCount: Object.keys(data).length,
+            data
+        };
+    },
+
+    importAll(backup, { clearFirst = true } = {}) {
+        if (!backup || backup.type !== 'full-backup' || !backup.data) {
+            return { success: false, error: 'Not a valid Resume Engine Pro full backup file.' };
+        }
+        try {
+            if (clearFirst) this.clear();
+            let restored = 0;
+            Object.keys(backup.data).forEach(key => {
+                if (key.startsWith(this.PREFIX)) {
+                    localStorage.setItem(key, backup.data[key]);
+                    restored++;
+                }
+            });
+            return { success: true, restored };
+        } catch (error) {
+            console.error('Full restore error:', error);
+            return { success: false, error: error.message };
+        }
     }
 };
 

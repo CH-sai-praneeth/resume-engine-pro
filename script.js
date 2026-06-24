@@ -859,6 +859,66 @@ function toggleSettingsMenu() {
     }
 }
 
+// ============================================================================
+// FULL BACKUP / RESTORE (one-click, timestamped)
+// ============================================================================
+
+function backupEverything() {
+    try {
+        const backup = StorageManager.exportAll();
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `resume-engine-pro-backup_${stamp}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        if (typeof showToast === 'function') {
+            showToast(`Backup saved (${backup.keyCount} data sets)`, 'success');
+        }
+    } catch (err) {
+        console.error('Backup failed:', err);
+        if (typeof showToast === 'function') showToast('Backup failed: ' + err.message, 'error');
+    }
+}
+
+function restoreEverything() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            let backup;
+            try {
+                backup = JSON.parse(event.target.result);
+            } catch {
+                if (typeof showToast === 'function') showToast('Invalid JSON file.', 'error');
+                return;
+            }
+            if (!confirm('Restore will REPLACE all current data in this browser (profiles, history, applications, settings) with the backup. Continue?')) {
+                return;
+            }
+            const result = StorageManager.importAll(backup, { clearFirst: true });
+            if (result.success) {
+                if (typeof showToast === 'function') showToast(`Restored ${result.restored} data sets. Reloading...`, 'success');
+                setTimeout(() => window.location.reload(), 1200);
+            } else {
+                if (typeof showToast === 'function') showToast('Restore failed: ' + result.error, 'error');
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
 // Close settings menu when clicking outside
 window.addEventListener('click', (e) => {
     const settingsBtn = document.getElementById('settingsBtn');

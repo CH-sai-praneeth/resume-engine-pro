@@ -762,10 +762,14 @@
                         </label>
                     </div>
                     <div class="button-group">
-                        <button class="btn btn-secondary" onclick="exportSettings()">Export Settings</button>
-                        <button class="btn btn-secondary" onclick="importSettings()">Import Settings</button>
+                        <button class="btn btn-success" onclick="backupEverything()" title="Download a single timestamped JSON containing all profiles, history, applications, contacts, and settings">⬇️ Backup Everything</button>
+                        <button class="btn btn-secondary" onclick="restoreEverything()" title="Restore all data from a previously saved backup JSON file">⬆️ Restore Everything</button>
                         <button class="btn btn-danger" onclick="clearAllData()">Clear All Data</button>
                     </div>
+                    <p style="margin-top:0.75rem; color:var(--text-secondary); font-size:0.85rem;">
+                        All data lives only in this browser. <strong>Back up before clearing browsing data.</strong>
+                        Restore replaces current data with the backup file's contents.
+                    </p>
                 </div>
             </div>
         </section>

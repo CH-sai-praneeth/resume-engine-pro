@@ -725,6 +725,20 @@ function displayHistory() {
             : (item.outputs != null
                 ? `${item.outputs} file(s)` + (item.matchedSkills != null ? `, ${item.matchedSkills} skill(s) matched` : '')
                 : '—');
+        let actionsCell = '—';
+        if (item.id) {
+            if (status === 'success') {
+                if (item.published && item.repoUrl) {
+                    actionsCell = `<a href="${item.repoUrl}" target="_blank" rel="noopener" class="hist-link">Repo ✓</a>`
+                        + (item.pagesUrl ? ` · <a href="${item.pagesUrl}" target="_blank" rel="noopener" class="hist-link">Live</a>` : '')
+                        + ` <button class="action-btn" title="Publish again (updates files)" onclick="publishHistoryEntry('${item.id}', this)">📤</button>`;
+                } else {
+                    actionsCell = `<button class="action-btn" title="Publish to GitHub & add to tracker" onclick="publishHistoryEntry('${item.id}', this)">📤 Publish</button>`;
+                }
+            } else if (status === 'in-progress' || status === 'failed') {
+                actionsCell = `<button class="action-btn" title="Re-check the cloud run" onclick="recheckHistoryEntry('${item.id}', this)">🔄 Re-check</button>`;
+            }
+        }
         return `<tr>
             <td>${escHtml(item.profile || '—')}</td>
             <td>${escHtml(providerLabel(item.provider))}</td>
@@ -734,6 +748,7 @@ function displayHistory() {
             <td style="text-align:center;">${item.outputs != null ? item.outputs : '—'}</td>
             <td>${escHtml(dateStr)}<br><small style="color:#808080;">${escHtml(timeStr)}</small></td>
             <td class="hist-details">${details}</td>
+            <td class="hist-actions">${actionsCell}</td>
         </tr>`;
     }).join('');
 
@@ -750,6 +765,7 @@ function displayHistory() {
                         <th>Outputs</th>
                         <th>Date &amp; Time</th>
                         <th>Details / Reason</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -1643,7 +1659,7 @@ async function finalizeResumedRun(item, aiData) {
         if (!profile) {
             // Can't rebuild documents without the profile, but the run succeeded and
             // the result is committed in the repo — mark it Success regardless.
-            StorageManager.updateGeneration(item.id, { status: 'success', error: '', jd: undefined, genOpts: undefined });
+            StorageManager.updateGeneration(item.id, { status: 'success', error: '' });
             displayHistory();
             showToast('An earlier Ollama cloud resume finished successfully (see History)', 'success');
             return;
@@ -1660,13 +1676,199 @@ async function finalizeResumedRun(item, aiData) {
         if (downloadLinks) downloadLinks.style.display = 'block';
         if (statusContent) statusContent.innerHTML = `<p>✅ Your earlier Ollama cloud resume is ready (${count} document set${count === 1 ? '' : 's'}). Download below.</p>`;
         StorageManager.updateGeneration(item.id, {
-            status: 'success', error: '', outputs: count, matchedSkills: matched.length, aiUsed: true,
-            jd: undefined, genOpts: undefined
+            status: 'success', error: '', outputs: count, matchedSkills: matched.length, aiUsed: true
         });
         displayHistory();
         showToast('Your Ollama cloud resume is ready — open the Generate tab to download', 'success');
     } catch (e) {
         console.warn('finalizeResumedRun failed:', e.message);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PUBLISH a generation to the user's GitHub account: create a role-named repo,
+// push the resume / cover letter / job-details / portfolio, enable GitHub Pages
+// so the portfolio is live, then add the application to the tracker with the
+// live portfolio + repo links. Driven by a manual button (Generate result row
+// and History rows). Reuses the same PAT used for the Ollama pipeline.
+// ---------------------------------------------------------------------------
+function safeRepoName(s) {
+    return String(s || 'application').trim()
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 90) || 'application';
+}
+
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || '').split(',')[1] || '');
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+    });
+}
+
+// Build { filename: Blob } for everything we want committed to the published repo.
+async function buildPublishFiles(workingProfile, jdText, opts, baseName) {
+    const meta = extractJobMeta(jdText);
+    const matched = matchSkillsToJD(normalizeProfile(workingProfile), jdText);
+    const files = {};
+    if (opts.wantResume) {
+        files[`${baseName}_Resume.pdf`] = await buildResumePdfBlob(workingProfile, matched);
+        files[`${baseName}_Resume.doc`] = buildResumeDocBlob(workingProfile, matched);
+    }
+    if (opts.wantCover) {
+        files[`${baseName}_CoverLetter.doc`] = buildCoverLetterDocBlob(workingProfile, meta.title, meta.company, jdText);
+    }
+    if (opts.wantJobDetails) {
+        files['job-details.md'] = buildJobDetailsBlob(meta.title, meta.company, jdText);
+    }
+    // Portfolio is committed as index.html so GitHub Pages serves it at the root.
+    if (opts.wantPortfolio && window.PortfolioTemplates) {
+        try {
+            const html = PortfolioTemplates.generatePortfolio(normalizeProfile(workingProfile), opts.template || 'minimalist', 0);
+            if (html) files['index.html'] = new Blob([html], { type: 'text/html' });
+        } catch (_) { /* portfolio optional */ }
+    }
+    return { files, meta };
+}
+
+async function publishHistoryEntry(histId, btnEl) {
+    const item = (StorageManager.getHistory(100) || []).find(h => h.id === histId);
+    if (!item) { showToast('Could not find that generation', 'error'); return; }
+    if (!(window.GitHubRunner && GitHubRunner.hasToken())) {
+        showToast('Add a GitHub token in Settings → Ollama first (it is also used for publishing)', 'warning');
+        return;
+    }
+    if (item.published && item.repoUrl) {
+        if (!confirm('This entry was already published to ' + item.repoUrl + '. Publish again and update the files?')) return;
+    }
+    const profile = item.profileId ? StorageManager.getProfile(item.profileId) : null;
+    if (!profile) { showToast('The profile for this entry was not found — cannot rebuild documents', 'error'); return; }
+
+    const statusContent = document.getElementById('statusContent');
+    const statusBox = document.getElementById('generationStatus');
+    if (statusBox) statusBox.style.display = 'block';
+    const setMsg = (html) => { if (statusContent) statusContent.innerHTML = html; };
+    const origLabel = btnEl ? btnEl.innerHTML : '';
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Publishing…'; }
+
+    try {
+        const jd = item.jd || '';
+        const opts = item.genOpts || { wantResume: true, wantCover: true, wantPortfolio: true, wantJobDetails: true, template: 'minimalist' };
+        const baseName = item.baseName || safeFileName(profile.displayName || profile.name);
+        const meta = extractJobMeta(jd);
+        const role = meta.title || item.jobTitle || profile.headline || 'Role';
+        const company = meta.company || item.company || 'Company';
+
+        // For Ollama entries re-fetch the committed AI result so the published docs
+        // carry the tailored summary/skills/experience, not just the base profile.
+        let workingProfile = profile;
+        if (item.provider === 'ollama' && item.runId) {
+            try {
+                const aiData = await GitHubRunner.fetchResult(item.runId);
+                if (aiData && !aiData._raw) workingProfile = mergeTailored(profile, aiData);
+            } catch (_) { /* fall back to base profile */ }
+        }
+
+        const login = await GitHubRunner.getLogin();
+        const repoName = safeRepoName(role);
+        setMsg(`<p>⏳ Creating repository <code>${escHtml(login)}/${escHtml(repoName)}</code>…</p>`);
+        await GitHubRunner.ensureRepo(login, repoName, `${role} — application package (resume, cover letter, portfolio)`);
+
+        const { files } = await buildPublishFiles(workingProfile, jd, opts, baseName);
+        const names = Object.keys(files);
+        if (!names.length) throw new Error('Nothing to publish — no documents were selected for this generation.');
+        let n = 0;
+        for (const path of names) {
+            n++;
+            setMsg(`<p>⏳ Uploading ${n}/${names.length}: <code>${escHtml(path)}</code>…</p>`);
+            const b64 = await blobToBase64(files[path]);
+            await GitHubRunner.putFile(login, repoName, path, b64, 'Add ' + path);
+        }
+
+        const repoUrl = `https://github.com/${login}/${repoName}`;
+        let pagesUrl = '';
+        if (files['index.html']) {
+            setMsg('<p>⏳ Enabling GitHub Pages for the live portfolio…</p>');
+            const ok = await GitHubRunner.enablePages(login, repoName, 'main');
+            if (ok) pagesUrl = `https://${login}.github.io/${repoName}/`;
+        }
+
+        // Applied date defaults to the generation time (editable later in tracker).
+        const date = (item.generatedAt ? new Date(item.generatedAt) : new Date()).toISOString().split('T')[0];
+        try {
+            JobTrackerManager.addApplication({
+                portfolio: repoName, role, company, date,
+                link: pagesUrl || repoUrl, repo: repoUrl, status: 'Applied', comments: ''
+            });
+            if (typeof renderApplicationsList === 'function') renderApplicationsList();
+        } catch (_) { /* tracker add is best-effort */ }
+
+        try { StorageManager.updateGeneration(histId, { published: true, repoUrl, pagesUrl }); displayHistory(); } catch (_) {}
+
+        const pagesLine = pagesUrl
+            ? `<li>Live portfolio: <a href="${pagesUrl}" target="_blank" rel="noopener">${pagesUrl}</a> <small>(Pages can take ~1 min to go live)</small></li>`
+            : '';
+        setMsg(`<div class="cloud-error">
+            <p>✅ <strong>Published to GitHub and added to your tracker.</strong></p>
+            <ol class="cloud-error-steps">
+                <li>Repository: <a href="${repoUrl}" target="_blank" rel="noopener">${repoUrl}</a></li>
+                ${pagesLine}
+            </ol>
+        </div>`);
+        showToast('Published to GitHub and added to the tracker', 'success');
+    } catch (e) {
+        console.error('Publish failed:', e);
+        setMsg(`<p>❌ Publish failed: ${escHtml(e.message)}</p><p><small>Your token needs repo-create + contents + Pages write (classic <code>repo</code> scope, or fine-grained Administration/Contents/Pages = write on your account).</small></p>`);
+        showToast('Publish failed: ' + e.message, 'error');
+    } finally {
+        if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = origLabel || '📤 Publish to GitHub & add to tracker'; }
+    }
+}
+
+// Manually reconcile a stuck row. If it carries a runId, check that run; else
+// offer to import the most recent successful run from the Actions history.
+async function recheckHistoryEntry(histId, btnEl) {
+    const item = (StorageManager.getHistory(100) || []).find(h => h.id === histId);
+    if (!item) { showToast('Could not find that generation', 'error'); return; }
+    if (!(window.GitHubRunner && GitHubRunner.hasToken())) {
+        showToast('Add a GitHub token in Settings → Ollama first', 'warning');
+        return;
+    }
+    const origLabel = btnEl ? btnEl.innerHTML : '';
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Checking…'; }
+    try {
+        if (item.runId) {
+            const r = await GitHubRunner.checkAndFetch(item.runId);
+            if (r.state === 'success') {
+                await finalizeResumedRun(item, r.data);
+                showToast('Run completed — flipped to Success', 'success');
+            } else if (r.state === 'failed') {
+                StorageManager.updateGeneration(item.id, { status: 'failed', error: 'Concluded ' + (r.conclusion || 'failure') + '. See the Actions logs.' });
+                displayHistory();
+                showToast('That run concluded as a failure', 'error');
+            } else {
+                showToast('Still running on GitHub — check again shortly', 'warning');
+            }
+            return;
+        }
+        // No runId stored (older entry): import the most recent successful run.
+        const runs = await GitHubRunner.listRecentRuns(15);
+        const done = runs.filter(r => r.status === 'completed' && r.conclusion === 'success');
+        if (!done.length) { showToast('No completed successful runs found to import', 'warning'); return; }
+        const pick = done[0];
+        const rid = ((String(pick.name || pick.display_title || '')).match(/run-[a-z0-9-]+/i) || [])[0];
+        if (!rid) { showToast('Could not parse a run id from the latest run', 'warning'); return; }
+        if (!confirm(`This entry has no stored run id. Import documents from the latest successful run "${rid}"?`)) return;
+        const data = await GitHubRunner.fetchResult(rid);
+        await finalizeResumedRun({ ...item, runId: rid }, data);
+        showToast('Imported the latest successful run', 'success');
+    } catch (e) {
+        console.error('Re-check failed:', e);
+        showToast('Re-check failed: ' + e.message, 'error');
+    } finally {
+        if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = origLabel || '🔄 Re-check'; }
     }
 }
 
@@ -1768,27 +1970,25 @@ async function generateSingle() {
 
         // Record this attempt up-front so EVERY try is logged (success or not).
         try {
-            const isOllama = provider === 'ollama';
             histId = StorageManager.saveGeneration({
                 profile: profile.displayName || profile.name || 'Profile',
                 profileId,
                 jobTitle: meta.title || '',
+                company: meta.company || '',
                 provider: provider || 'local',
                 mode,
                 status: 'in-progress',
                 cost: 0,
                 outputs: 0,
-                ...(isOllama ? {
-                    jd: jdText.slice(0, 16000),
-                    baseName,
-                    genOpts: {
-                        wantResume: !!wantResume,
-                        wantCover: !!wantCover,
-                        wantPortfolio: !!wantPortfolio,
-                        wantJobDetails: !!wantJobDetails,
-                        template
-                    }
-                } : {})
+                jd: jdText.slice(0, 16000),
+                baseName,
+                genOpts: {
+                    wantResume: !!wantResume,
+                    wantCover: !!wantCover,
+                    wantPortfolio: !!wantPortfolio,
+                    wantJobDetails: !!wantJobDetails,
+                    template
+                }
             });
             displayHistory();
         } catch (_) { /* non-fatal */ }
@@ -1878,7 +2078,10 @@ async function generateSingle() {
 
         const matchNote = matched.length ? ` Matched ${matched.length} skill(s) to the JD.` : '';
         const aiNote = aiUsed ? ` AI-tailored (~$${aiCost.toFixed(4)}).` : '';
-        if (statusContent) statusContent.innerHTML = `<p>✅ Generated ${count} document set(s).${aiNote}${matchNote} Click below to download.</p>`;
+        const publishBtn = (window.GitHubRunner && GitHubRunner.hasToken())
+            ? `<button class="btn btn-primary" style="margin-top:0.7rem;" onclick="publishHistoryEntry('${histId}', this)">📤 Publish to GitHub &amp; add to tracker</button>`
+            : `<p style="margin-top:0.6rem;"><small>💡 Add a GitHub token in <strong>Settings → Ollama</strong> to publish these to your GitHub (repo + live portfolio) and auto-add to the tracker.</small></p>`;
+        if (statusContent) statusContent.innerHTML = `<p>✅ Generated ${count} document set(s).${aiNote}${matchNote} Click below to download.</p>${publishBtn}`;
         if (downloadLinks) downloadLinks.style.display = 'block';
         showToast(`Generated ${count} document set(s)`, 'success');
     } catch (error) {

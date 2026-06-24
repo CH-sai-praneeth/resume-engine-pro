@@ -873,6 +873,10 @@ select option {
 .hist-muted { background: rgba(160, 160, 160, 0.15); color: #b8b8b8; border: 1px solid rgba(160, 160, 160, 0.35); }
 .hist-details { max-width: 320px; }
 .hist-err { color: #ff9a9a; }
+.hist-actions { white-space: nowrap; }
+.hist-actions .action-btn { margin: 0.1rem; }
+.hist-link { color: #38e0ff; font-weight: 600; text-decoration: none; }
+.hist-link:hover { text-decoration: underline; }
 
 /* ============================================================================
    SETTINGS

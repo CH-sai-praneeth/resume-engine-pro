@@ -484,5 +484,34 @@ async function resumePendingRuns() {
 }`,
         lesson: 'A polling loop must tolerate transient network throws, not only non-ok HTTP responses - wrap the fetch() itself and continue, because one Failed to fetch from tracking prevention or eventual consistency should never abort a job that is genuinely running. When the real source of truth (a CI run) outlives the browser tab, the UI status is just a cached guess: persist the run identifier the moment you dispatch, keep indeterminate attempts in-progress instead of failing them, and run a background reconciler that flips the record to its true terminal state (and rebuilds any derived artifacts) on load and on an interval. Make every long-running side effect resumable and idempotent so a refresh, a blip, or navigating away never strands the user with a permanently wrong status.',
         impact: 'High - A healthy cloud run now reliably reconciles to Success even if the foreground poll hiccuped, the documents are rebuilt and offered for download automatically, and users can navigate away or reload without losing the result or seeing a false Failed.'
+    },
+    {
+        id: 27,
+        title: 'Stuck In-Progress Rows Could Not Self-Heal Without a Stored runId + New GitHub Publish & Recovery Workflow',
+        severity: 'high',
+        status: 'Fixed',
+        role: 'Frontend Developer / DevOps / SRE',
+        fixTime: '120 min',
+        description: 'A live multi-trigger test surfaced a reconciliation gap and a missing capability. (1) The user rapidly refreshed and clicked Generate Now five or six times while the auto-reconcile fix (bug 26) was still being deployed, so those attempts were logged by the OLD code that did not yet persist a runId onto the history record. When the GitHub Actions runs later finished green, the foreground reconciler had no runId to correlate against and left the rows stuck on In progress forever, with no way to download the finished documents. (2) There was no path to take a finished generation and store it in the user GitHub account or host the portfolio live, and the in-app tracker lacked a repo link column. (3) A CI annotation warned that actions/checkout and actions/setup-node were pinned to the deprecated Node 20 runtime.',
+        rootCause: 'The runId is only known in the browser after dispatch; the pre-fix code did not save it on the in-progress record, and it also did not store the profile or job-description context, so a legacy stuck row had nothing to reconcile or rebuild from. Separately, publishing simply did not exist: generated documents were download-only, never pushed to a repo, and the tracker data model had no repo field.',
+        resolution: 'Recovery: a Re-check button now appears on every in-progress or failed history row. If the row carries a runId it calls a non-throwing checkAndFetch and finalizes to Success; if it has no runId (legacy) it lists recent successful workflow_dispatch runs, parses the latest run id, fetches the committed result, and rebuilds the documents. Every generation now also stores its profileId, a capped job description, baseName, and the selected outputs so any row can be rebuilt later. Publishing: a Publish to GitHub button (on the generate result and on each success row) creates a role-named public repo via the user token, uploads the resume, cover letter, job-details.md and the portfolio as index.html through the Contents API, enables GitHub Pages so the portfolio is live, and adds a tracker entry with the live portfolio link, the repo link, an applied date defaulting to the generation time, and status Applied. The Applications table gained a Links column (Portfolio and Repo) and the editor gained a Repo Link field. CI: bumped checkout and setup-node to v5 and the script runtime to Node 22 to clear the deprecation warning.',
+        codeExample: `// Persist the runId so a stuck row can self-heal later.
+const { runId } = await GitHubRunner.dispatch({ });
+StorageManager.updateGeneration(histId, { runId });
+
+// Recovery for legacy rows that never stored a runId:
+const runs = await GitHubRunner.listRecentRuns(15);
+const done = runs.filter(r => r.status === 'completed' && r.conclusion === 'success');
+const rid = (String(done[0].name).match(/run-[a-z0-9-]+/i) || [])[0];
+const aiData = await GitHubRunner.fetchResult(rid);
+await finalizeResumedRun({ ...item, runId: rid }, aiData);
+
+// Publish: create repo, push files, enable Pages, add to tracker.
+await GitHubRunner.ensureRepo(login, repoName, desc);
+await GitHubRunner.putFile(login, repoName, 'index.html', base64Html, 'Add portfolio');
+await GitHubRunner.enablePages(login, repoName, 'main');
+JobTrackerManager.addApplication({ role, company, link: pagesUrl, repo: repoUrl, status: 'Applied' });`,
+        lesson: 'Any client-driven async job must persist its server-side identifier the instant it is dispatched; without it a later success cannot be matched back to the row that started it. Store enough context (inputs, options, source ids) up front to fully rebuild outputs later, and always provide a manual recovery path for rows created before a fix shipped, since old data will not benefit from new write-time logic. When a job already produces a durable artifact in a repo, listing recent runs and re-importing is a cheap, robust fallback. Finally, keep CI action versions current so deprecation warnings do not pile up.',
+        impact: 'High - stuck rows can now be recovered with one click, every generation is rebuildable, finished application packages live in the user GitHub with a live portfolio, the tracker shows portfolio and repo links, and the CI deprecation warning is gone.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

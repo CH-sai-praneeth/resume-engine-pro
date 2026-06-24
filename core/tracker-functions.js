@@ -57,45 +57,50 @@ function renderApplicationsList() {
     `;
     document.getElementById('appStats').innerHTML = statsHtml;
     
-    // Render table
-    const tableHtml = `
+    document.getElementById('applicationsList').innerHTML = buildApplicationsTable(apps);
+}
+
+// Shared renderer so the table stays identical between full render and filtering.
+function buildApplicationsTable(apps) {
+    return `
         <table class="applications-table">
             <thead>
                 <tr>
                     <th>Role</th>
                     <th>Company</th>
                     <th>Applied</th>
-                    <th>Portfolio</th>
+                    <th>Links</th>
                     <th>Status</th>
                     <th>Comments</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
-                ${apps.map(app => `
+                ${apps.map(app => {
+                    const links = [];
+                    if (app.link) links.push(`<a href="${app.link}" target="_blank" style="color: var(--primary);">Portfolio</a>`);
+                    if (app.repo) links.push(`<a href="${app.repo}" target="_blank" style="color: var(--primary);">Repo</a>`);
+                    const linksHtml = links.length ? links.join(' <span style="color:var(--border);">|</span> ') : 'N/A';
+                    const status = app.status || 'Applied';
+                    return `
                     <tr>
-                        <td>${app.role}</td>
-                        <td>${app.company}</td>
-                        <td>${app.date}</td>
-                        <td>
-                            ${app.link ? `<a href="${app.link}" target="_blank" style="color: var(--primary);">View</a>` : 'N/A'}
-                        </td>
-                        <td>
-                            <span class="status-badge status-${app.status.toLowerCase()}">${app.status}</span>
-                        </td>
-                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">${app.comments || ''}</td>
+                        <td>${app.role || ''}</td>
+                        <td>${app.company || ''}</td>
+                        <td>${app.date || ''}</td>
+                        <td>${linksHtml}</td>
+                        <td><span class="status-badge status-${status.toLowerCase()}">${status}</span></td>
+                        <td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis;">${app.comments || ''}</td>
                         <td>
                             <div class="row-actions">
                                 <button class="action-btn" onclick="editApplication(${app.id})" title="Edit">✏️</button>
                                 <button class="action-btn" onclick="deleteApplication(${app.id})" title="Delete">🗑️</button>
                             </div>
                         </td>
-                    </tr>
-                `).join('')}
+                    </tr>`;
+                }).join('')}
             </tbody>
         </table>
     `;
-    document.getElementById('applicationsList').innerHTML = tableHtml;
 }
 
 function filterTrackerApplications() {
@@ -117,45 +122,7 @@ function filterTrackerApplications() {
         apps = apps.filter(app => app.status === status);
     }
     
-    // Render filtered
-    const tableHtml = `
-        <table class="applications-table">
-            <thead>
-                <tr>
-                    <th>Role</th>
-                    <th>Company</th>
-                    <th>Applied</th>
-                    <th>Portfolio</th>
-                    <th>Status</th>
-                    <th>Comments</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${apps.map(app => `
-                    <tr>
-                        <td>${app.role}</td>
-                        <td>${app.company}</td>
-                        <td>${app.date}</td>
-                        <td>
-                            ${app.link ? `<a href="${app.link}" target="_blank" style="color: var(--primary);">View</a>` : 'N/A'}
-                        </td>
-                        <td>
-                            <span class="status-badge status-${app.status.toLowerCase()}">${app.status}</span>
-                        </td>
-                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">${app.comments || ''}</td>
-                        <td>
-                            <div class="row-actions">
-                                <button class="action-btn" onclick="editApplication(${app.id})" title="Edit">✏️</button>
-                                <button class="action-btn" onclick="deleteApplication(${app.id})" title="Delete">🗑️</button>
-                            </div>
-                        </td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
-    document.getElementById('applicationsList').innerHTML = tableHtml;
+    document.getElementById('applicationsList').innerHTML = buildApplicationsTable(apps);
 }
 
 function openApplicationModal(appId = null) {
@@ -172,6 +139,7 @@ function openApplicationModal(appId = null) {
             document.getElementById('appRole').value = app.role;
             document.getElementById('appCompany').value = app.company;
             document.getElementById('appLink').value = app.link || '';
+            document.getElementById('appRepo').value = app.repo || '';
             document.getElementById('appStatus').value = app.status;
             document.getElementById('appComments').value = app.comments || '';
         }
@@ -199,6 +167,7 @@ function saveApplication(event) {
         role: document.getElementById('appRole').value,
         company: document.getElementById('appCompany').value,
         link: document.getElementById('appLink').value,
+        repo: document.getElementById('appRepo').value,
         status: document.getElementById('appStatus').value,
         comments: document.getElementById('appComments').value
     };

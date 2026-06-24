@@ -1855,6 +1855,46 @@ async function buildPublishFiles(workingProfile, jdText, opts, baseName) {
     return { files, meta };
 }
 
+// Build a README.md for the published repo that leads with the live portfolio
+// link (when Pages is enabled) and lists the included documents.
+function buildPublishReadme({ role, company, pagesUrl, fileNames, date }) {
+    const lines = [];
+    lines.push(`# ${role}`);
+    lines.push('');
+    lines.push(`${company} — application package generated with [Resume Engine Pro](https://rdammala.github.io/resume-engine-pro/).`);
+    lines.push('');
+    if (pagesUrl) {
+        lines.push('## 🔗 Live Portfolio');
+        lines.push('');
+        lines.push(`👉 **[View the live portfolio](${pagesUrl})**`);
+        lines.push('');
+        lines.push('_(GitHub Pages can take ~1 minute to go live after publishing.)_');
+        lines.push('');
+    }
+    const docs = (fileNames || []).filter(f => f !== 'index.html' && f !== 'README.md');
+    if (docs.length) {
+        lines.push('## 📄 Documents');
+        lines.push('');
+        docs.forEach(f => {
+            const label = f.endsWith('.pdf') ? 'Resume (PDF)'
+                : /_Resume\.doc$/i.test(f) ? 'Resume (Word)'
+                : /CoverLetter/i.test(f) ? 'Cover Letter'
+                : f === 'job-details.md' ? 'Job Details'
+                : f;
+            lines.push(`- [${label}](./${encodeURI(f)})`);
+        });
+        lines.push('');
+    }
+    lines.push('---');
+    lines.push(`_Generated ${date}._`);
+    return lines.join('\n');
+}
+
+// UTF-8-safe base64 for committing text files via the GitHub Contents API.
+function utf8ToBase64(str) {
+    return btoa(unescape(encodeURIComponent(String(str || ''))));
+}
+
 async function publishHistoryEntry(histId, btnEl) {
     const item = (StorageManager.getHistory(100) || []).find(h => h.id === histId);
     if (!item) { showToast('Could not find that generation', 'error'); return; }
@@ -1917,8 +1957,15 @@ async function publishHistoryEntry(histId, btnEl) {
             if (ok) pagesUrl = `https://${login}.github.io/${repoName}/`;
         }
 
-        // Applied date defaults to the generation time (editable later in tracker).
+        // Replace the auto-generated README with one that leads with the live link.
         const date = (item.generatedAt ? new Date(item.generatedAt) : new Date()).toISOString().split('T')[0];
+        try {
+            setMsg('<p>⏳ Writing README with the live portfolio link…</p>');
+            const readme = buildPublishReadme({ role, company, pagesUrl, fileNames: names, date });
+            await GitHubRunner.putFile(login, repoName, 'README.md', utf8ToBase64(readme), 'Add README with live portfolio link');
+        } catch (_) { /* README is best-effort */ }
+
+        // Applied date defaults to the generation time (editable later in tracker).
         try {
             JobTrackerManager.addApplication({
                 portfolio: repoName, role, company, date,

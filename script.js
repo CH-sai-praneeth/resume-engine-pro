@@ -1646,6 +1646,10 @@ function updateAICost() {
         box.innerHTML = '<p>✅ <strong>Free AI</strong> selected — no key needed, $0.00 cost. Tailoring runs in your browser.</p>';
         return;
     }
+    if (provider === 'ollama') {
+        box.innerHTML = '<p>✅ <strong>Ollama / Llama 3</strong> selected — free and private. Make sure your Ollama server is running and reachable (configure the endpoint in <strong>Settings</strong>).</p>';
+        return;
+    }
     if (provider === 'custom') {
         box.innerHTML = configured
             ? '<p>✅ Using your <strong>custom AI provider</strong> — billed by your own account/provider.</p>'
@@ -1661,7 +1665,7 @@ function updateAICost() {
 function refreshGenerationModeLabels(provider) {
     const sel = document.getElementById('generationMode');
     if (!sel) return;
-    const free = !provider || provider === 'pollinations' || provider === 'custom';
+    const free = !provider || provider === 'pollinations' || provider === 'custom' || provider === 'ollama';
     const base = {
         fast: 'Fast (Quick keyword matching)',
         smart: 'Smart (Full tailoring)',
@@ -1685,6 +1689,10 @@ function updateBulkCost() {
     }
     if (provider === 'pollinations') {
         box.innerHTML = `${count} job(s) × <strong>Free AI</strong> (Pollinations) — $0.00 total, no key needed.`;
+        return;
+    }
+    if (provider === 'ollama') {
+        box.innerHTML = `${count} job(s) × <strong>Ollama / Llama 3</strong> — free, runs on your own server.`;
         return;
     }
     if (provider === 'custom') {
@@ -1756,6 +1764,23 @@ function renderAISettings() {
         </div>`;
     });
 
+    // Ollama (local Llama 3) — free, runs on the user's machine or a Codespace
+    const oll = AIIntegration.getOllamaConfig();
+    html += `<div class="ai-provider-card">
+        <h4>${escHtml(AIIntegration.providers.ollama.name)}</h4>
+        <p>Free and private — runs Llama 3 locally via <strong>Ollama</strong>. Default works if Ollama runs on this same machine. For GitHub Codespaces, paste the forwarded URL (ending in <code>/v1/chat/completions</code>).</p>
+        <div class="form-group">
+            <label>Ollama Endpoint URL</label>
+            <input type="text" id="ollamaEndpoint" placeholder="http://localhost:11434/v1/chat/completions" value="${escHtml(oll.endpoint)}" />
+        </div>
+        <div class="form-group">
+            <label>Model name</label>
+            <input type="text" id="ollamaModel" placeholder="llama3" value="${escHtml(oll.model)}" />
+        </div>
+        <button class="btn btn-secondary" onclick="saveOllamaConfig()">Save Ollama Settings</button>
+        <small>Setup: install Ollama, run <code>ollama pull llama3</code>, then <code>OLLAMA_ORIGINS='*' ollama serve</code> so the browser can reach it. In Codespaces, forward port 11434 and make it public.</small>
+    </div>`;
+
     // Custom / BYO OpenAI-compatible provider
     const cfg = AIIntegration.getCustomConfig();
     html += `<div class="ai-provider-card">
@@ -1805,6 +1830,18 @@ function saveCustomAIConfig() {
     }
     AIIntegration.setCustomConfig(endpoint, model, key);
     showToast('Custom AI provider saved', 'success');
+    renderAISettings();
+}
+
+function saveOllamaConfig() {
+    const endpoint = document.getElementById('ollamaEndpoint')?.value.trim();
+    const model = document.getElementById('ollamaModel')?.value.trim();
+    if (!endpoint) {
+        showToast('Please enter the Ollama endpoint URL', 'warning');
+        return;
+    }
+    AIIntegration.setOllamaConfig(endpoint, model);
+    showToast('Ollama settings saved', 'success');
     renderAISettings();
 }
 

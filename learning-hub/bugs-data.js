@@ -341,5 +341,34 @@ const expArr = extractBalancedArray(candidate, '"experience"');
 if (expArr) { try { recovered.experience = JSON.parse(expArr); } catch(_){} }`,
         lesson: 'A "return JSON" instruction is not enough: asking for a large nested string field (full_resume) almost guarantees the response exceeds the token budget and gets truncated into invalid JSON. Keep the schema minimal and flat, forbid raw newlines inside strings, set an explicit max_tokens, and request response_format json_object. Always pair a strict prompt with a tolerant parser that recovers individual fields from malformed output and degrades to the original data - never to the raw blob.',
         impact: 'Critical - Free Pollinations AI now returns compact, parseable JSON that maps cleanly into the resume template, so PDF/Word/portfolio outputs are properly formatted ATS resumes instead of a JSON dump.'
+    },
+    {
+        id: 22,
+        title: 'AI Produced an Identical Resume - Thin Profile + Echo-Prone Prompt; Added Ollama/Llama 3',
+        severity: 'high',
+        status: 'Fixed',
+        role: 'Prompt Engineering / Frontend Developer',
+        fixTime: '60 min',
+        description: 'After the JSON-parsing fixes, the free AI ran but the generated resume came out essentially identical to the uploaded input - no real tailoring, no ATS optimization. The expectation was that the model extracts everything from the original resume(s) and curates a NEW, professional, ATS-optimized resume targeted at the pasted job description.',
+        rootCause: 'Two issues. (1) The model only received the THIN parsed profile (the structured fields the parser managed to extract), which is lossy, and the prompt said "use ONLY facts present, rephrase and reorder" - a small model (gpt-oss-20b on Pollinations) interpreted that conservatively and largely echoed the input. (2) The prompt never gave the model the full original resume text, so it had little raw material to curate from, and it was not explicitly instructed to inject JD keywords, quantify bullets, or rewrite the summary for the target role.',
+        resolution: 'Reworked buildTailoringPrompt to (a) include the candidate\'s FULL original resume text (rawText, up to 8000 chars) as the authoritative source alongside the structured fields, and (b) give explicit ATS-optimization instructions: mirror exact JD terminology/keywords where truthful, rewrite the summary into 3-4 targeted sentences, convert each experience line into an achievement bullet (action verb first, quantified), and reprioritize skills by JD relevance - while never fabricating employers/titles/dates. Also added Ollama (Llama 3) as a second free, private provider: an OpenAI-compatible route (tailorWithOllama) defaulting to http://localhost:11434/v1/chat/completions with a configurable endpoint for GitHub Codespaces, a Settings card, dropdown entries, and a scripts/ollama-generate.js CLI + OLLAMA-SETUP.md for the Codespaces run-and-delete workflow.',
+        codeExample: `// Feed the model EVERYTHING, then tell it to genuinely rewrite for ATS
+const rawText = (resumeData.rawText || '').slice(0, 8000);
+prompt = \`...CANDIDATE FULL RESUME TEXT (authoritative source):
+"""\${rawText}"""
+TARGET JOB DESCRIPTION:
+"""\${jdData}"""
+Mirror exact JD keywords (only where truthful), rewrite the summary for THIS role,
+make every bullet action-verb-first and quantified, reprioritize skills by relevance...\`;
+
+// New free provider, OpenAI-compatible, configurable for Codespaces
+async tailorWithOllama(resumeData, jdData, mode) {
+  const cfg = this.getOllamaConfig();           // default localhost:11434
+  const res = await fetch(cfg.endpoint, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ model: cfg.model || 'llama3', stream:false, temperature:0.4, messages:[...] }) });
+  return { success:true, provider:'ollama', cost:0, tailored: (await res.json()).choices[0].message.content };
+}`,
+        lesson: 'For genuine resume tailoring, give the model the FULL source resume text (not just lossy parsed fields) and instruct it concretely on HOW to optimize (keyword mirroring, quantification, summary rewrite, skill reordering) - a vague "rephrase, use only facts" prompt makes small models echo the input. Offering a local model (Ollama/Llama 3) gives users a free, private alternative; expose it as an OpenAI-compatible provider with a configurable endpoint so it works both locally and via a Codespaces forwarded port.',
+        impact: 'High - The AI now meaningfully transforms the resume into an ATS-optimized, role-targeted document, and users have a second free, fully-private option (Ollama/Llama 3) runnable on their machine or a disposable Codespace.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

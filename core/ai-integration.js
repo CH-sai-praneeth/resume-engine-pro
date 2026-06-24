@@ -73,6 +73,20 @@ const AIIntegration = {
                 ultra: { tokens: 2500, cost: 0 }
             }
         },
+        ollama: {
+            name: 'Ollama (Llama 3 — free, runs on your machine/Codespace)',
+            endpoint: 'http://localhost:11434/v1/chat/completions',
+            model: 'llama3',
+            free: true,
+            noKey: true,
+            local: true,
+            costs: { input: 0, output: 0 },
+            modes: {
+                fast: { tokens: 500, cost: 0 },
+                smart: { tokens: 1500, cost: 0 },
+                ultra: { tokens: 2500, cost: 0 }
+            }
+        },
         custom: {
             name: 'Custom / Your own provider (OpenAI-compatible)',
             endpoint: '',
@@ -105,6 +119,7 @@ const AIIntegration = {
     
     isConfigured(provider) {
         if (provider === 'pollinations') return true; // free, no key required
+        if (provider === 'ollama') return true; // free local/Codespace server, no key
         if (provider === 'custom') {
             const c = this.getCustomConfig();
             return !!(c && c.endpoint);
@@ -129,6 +144,24 @@ const AIIntegration = {
             key: this.getAPIKey('custom') || ''
         };
     },
+
+    // Ollama (local Llama 3) configuration — OpenAI-compatible, no key needed.
+    // Defaults to the standard local Ollama port; override the endpoint when
+    // running in GitHub Codespaces (paste the forwarded https URL + /v1/chat/completions).
+    setOllamaConfig(endpoint, model) {
+        StorageManager.set('ollamaConfig', {
+            endpoint: endpoint || '',
+            model: model || ''
+        }, false);
+    },
+
+    getOllamaConfig() {
+        const cfg = StorageManager.get('ollamaConfig', false) || {};
+        return {
+            endpoint: cfg.endpoint || this.providers.ollama.endpoint,
+            model: cfg.model || this.providers.ollama.model
+        };
+    },
     
     getConfigured() {
         const configured = {};
@@ -148,7 +181,7 @@ const AIIntegration = {
     // ========================================================================
     
     getCost(provider, mode = 'smart') {
-        if (provider === 'pollinations' || provider === 'custom') return 0;
+        if (provider === 'pollinations' || provider === 'custom' || provider === 'ollama') return 0;
         if (!this.providers[provider]) return 0;
         return this.providers[provider].modes[mode]?.cost || 0;
     },
@@ -165,6 +198,9 @@ const AIIntegration = {
         // Free + custom providers handle their own auth
         if (provider === 'pollinations') {
             return this.tailorWithPollinations(resumeData, jdData, mode);
+        }
+        if (provider === 'ollama') {
+            return this.tailorWithOllama(resumeData, jdData, mode);
         }
         if (provider === 'custom') {
             return this.tailorWithCustom(resumeData, jdData, mode);
@@ -405,6 +441,43 @@ const AIIntegration = {
     },
 
     // ========================================================================
+    // OLLAMA (local Llama 3 — OpenAI-compatible, no key)
+    // ========================================================================
+
+    async tailorWithOllama(resumeData, jdData, mode) {
+        const cfg = this.getOllamaConfig();
+        const prompt = this.buildTailoringPrompt(resumeData, jdData, mode);
+        const maxTokens = Math.max(1800, this.providers.ollama.modes[mode]?.tokens || 1500);
+        try {
+            const response = await fetch(cfg.endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: cfg.model || 'llama3',
+                    temperature: 0.4,
+                    max_tokens: maxTokens,
+                    stream: false,
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        { role: 'system', content: 'You are an expert resume writer and ATS specialist. Respond with ONLY a single valid minified JSON object — no markdown, no code fences, no commentary.' },
+                        { role: 'user', content: prompt }
+                    ]
+                })
+            });
+            if (!response.ok) {
+                throw new Error(`Ollama error: ${response.status} (is the Ollama server running and reachable at ${cfg.endpoint}?)`);
+            }
+            const data = await response.json();
+            const content = data?.choices?.[0]?.message?.content
+                ?? data?.message?.content
+                ?? (typeof data === 'string' ? data : JSON.stringify(data));
+            return { success: true, provider: 'ollama', cost: 0, tailored: content };
+        } catch (error) {
+            throw new Error(`Ollama error: ${error.message}`);
+        }
+    },
+
+    // ========================================================================
     // CUSTOM PROVIDER (user's own OpenAI-compatible endpoint + model + key)
     // ========================================================================
 
@@ -451,39 +524,58 @@ const AIIntegration = {
     
     buildTailoringPrompt(resumeData, jdData, mode) {
         const modeNote = {
-            fast: 'Lightly tailor the wording to the job.',
-            smart: 'Thoroughly tailor the resume to the job and optimize wording for ATS keyword matching.',
-            ultra: 'Aggressively rewrite every section to maximize ATS keyword match while staying truthful to the candidate.'
+            fast: 'Tailor the wording and reorder content to the job; keep it efficient.',
+            smart: 'Thoroughly rewrite the resume to the job: surface relevant achievements, inject exact ATS keywords, and strengthen every bullet.',
+            ultra: 'Completely re-engineer the resume for maximum ATS score and recruiter appeal while staying truthful to the candidate\'s real history.'
         }[mode] || '';
 
-        // Keep the candidate payload compact so the model has room to answer in full.
-        const candidate = {
+        // Give the model EVERYTHING we have about the candidate so it can extract
+        // and curate freely: the structured fields plus the full original text.
+        const structured = {
             name: resumeData.name || resumeData.displayName || '',
+            email: resumeData.email || '',
+            phone: resumeData.phone || '',
+            location: resumeData.location || '',
             summary: resumeData.summary || '',
             skills: resumeData.skills || [],
             experience: resumeData.experience || [],
-            education: resumeData.education || []
+            education: resumeData.education || [],
+            certifications: resumeData.certifications || []
         };
+        const rawText = (resumeData.rawText || '').slice(0, 8000);
 
-        return `You are an expert resume writer and ATS optimization specialist.
-${modeNote}
+        return `You are a world-class resume writer and ATS (Applicant Tracking System) optimization specialist. ${modeNote}
 
-Rewrite the CANDIDATE RESUME to target the JOB DESCRIPTION. Use ONLY facts present in the candidate's resume — rephrase and reorder to surface the keywords and requirements from the job description. Do not invent employers, titles, dates, or credentials.
+GOAL: Produce a NEW, polished, ATS-optimized resume for the candidate, specifically targeted at the JOB DESCRIPTION below. Do not simply echo the input — actively rewrite it.
 
-CANDIDATE RESUME (JSON):
-${JSON.stringify(candidate)}
+HOW TO OPTIMIZE FOR ATS AND RECRUITERS:
+- Mirror the exact terminology, hard skills, tools, and keywords used in the job description (only where the candidate genuinely has that experience).
+- Rewrite the professional summary into 3-4 punchy sentences that position the candidate for THIS role, leading with their strongest, most relevant value.
+- Rewrite each experience bullet to be achievement-oriented: strong action verb first, quantified impact (numbers, %, scale) where the source supports it, and aligned to the job's responsibilities.
+- Prioritize and reorder skills so the most JD-relevant ones come first; include synonyms/variants the ATS may scan for.
+- Stay truthful: use only the candidate's real employers, titles, dates, and accomplishments from the data below. Never fabricate.
 
-JOB DESCRIPTION:
+CANDIDATE STRUCTURED DATA (JSON):
+${JSON.stringify(structured)}
+
+CANDIDATE FULL RESUME TEXT (authoritative source — extract any details missing from the structured data):
+"""
+${rawText}
+"""
+
+TARGET JOB DESCRIPTION:
+"""
 ${jdData}
+"""
 
-Respond with ONE valid minified JSON object and NOTHING else — no markdown, no code fences, no commentary before or after. Use EXACTLY these keys:
-{"summary":"3-4 sentence professional summary tailored to the job (plain text, no line breaks)","skills":["12-20 most relevant skills, prioritizing exact keywords from the job description"],"experience":[{"role":"job title","company":"employer","location":"city, ST","dates":"Mon YYYY - Mon YYYY","details":["achievement bullet, action-verb first, quantified, under 28 words"]}]}
+Respond with ONE valid minified JSON object and NOTHING else — no markdown, no code fences, no commentary. Use EXACTLY these keys:
+{"summary":"3-4 sentence ATS-optimized professional summary, plain text, no line breaks","skills":["12-20 prioritized, JD-aligned skills"],"experience":[{"role":"job title","company":"employer","location":"city, ST","dates":"Mon YYYY - Mon YYYY","details":["rewritten achievement bullet, action-verb first, quantified, under 28 words"]}]}
 
 Rules:
-- "summary" must be a single plain-text string with no newline characters.
-- Every string must be valid JSON: escape any double quotes, do not use raw newlines inside strings.
-- Order experience from most recent to oldest. Keep 3-6 bullets per role.
-- Return only the JSON object.`;
+- "summary" must be a single plain-text string with NO newline characters.
+- Escape any double quotes inside strings; never use raw newlines inside strings.
+- Order experience most-recent first; 3-6 strong bullets per role.
+- Return ONLY the JSON object.`;
     },
     
     // ========================================================================

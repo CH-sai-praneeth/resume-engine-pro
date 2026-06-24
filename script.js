@@ -1448,7 +1448,7 @@ function buildCoverLetterDocBlob(profile, jobTitle, company, jdText) {
     return new Blob(['\ufeff', html], { type: 'application/msword' });
 }
 
-function buildJobDetailsBlob(jobTitle, company, jdText) {
+function buildJobDetailsBlob(jobTitle, company, jdText, sourceUrl) {
     const md = `# Job Application Details
 
 ## Position
@@ -1459,6 +1459,9 @@ ${company}
 
 ## Date
 ${new Date().toISOString().split('T')[0]}
+
+## Source / Link
+${sourceUrl ? `<${sourceUrl}>` : '(not provided)'}
 
 ## Job Description
 ${jdText || '(not provided)'}
@@ -1692,7 +1695,7 @@ async function buildDocumentsFromProfile(workingProfile, jdText, baseName, opts,
         }
     }
     if (opts.wantJobDetails) {
-        addDownloadLink(downloadLinks, buildJobDetailsBlob(meta.title, meta.company, jdText), `${baseName}_JobDetails.md`, 'Job Details (Markdown)');
+        addDownloadLink(downloadLinks, buildJobDetailsBlob(meta.title, meta.company, jdText, opts.jobUrl), `${baseName}_JobDetails.md`, 'Job Details (Markdown)');
         count++;
     }
     return { count, matched };
@@ -1873,7 +1876,7 @@ async function buildPublishFiles(workingProfile, jdText, opts, baseName) {
         files[`${baseName}_CoverLetter.doc`] = buildCoverLetterDocBlob(workingProfile, meta.title, meta.company, jdText);
     }
     if (opts.wantJobDetails) {
-        files['job-details.md'] = buildJobDetailsBlob(meta.title, meta.company, jdText);
+        files['job-details.md'] = buildJobDetailsBlob(meta.title, meta.company, jdText, opts.jobUrl);
     }
     // Portfolio is committed as index.html so GitHub Pages serves it at the root.
     if (opts.wantPortfolio && window.PortfolioTemplates) {
@@ -2169,10 +2172,26 @@ async function generateSingle() {
         showToast('Selected profile not found', 'error');
         return;
     }
-    const jdText = (document.getElementById('jdText')?.value || '').trim();
-    if (!jdText) {
-        showToast('Please paste a job description (Step 2)', 'warning');
+    let jdText = (document.getElementById('jdText')?.value || '').trim();
+    const jobUrl = (document.getElementById('jdUrl')?.value || '').trim();
+    if (!jdText && !jobUrl) {
+        showToast('Add a job description or a job posting link (Step 2)', 'warning');
         return;
+    }
+
+    // Only a link was given: try a best-effort fetch. Most portals block this,
+    // so if it comes back empty we ask the user to paste the description text.
+    if (!jdText && jobUrl) {
+        showToast('Trying to read the job posting…', 'info');
+        try { jdText = await fetchJDPlainText(jobUrl); } catch (_) { jdText = ''; }
+        if (jdText) {
+            const jdArea = document.getElementById('jdText');
+            if (jdArea) jdArea.value = jdText.slice(0, 8000);
+            jdText = jdText.slice(0, 8000);
+        } else {
+            showToast('Could not auto-read that link (the portal likely blocks it). Paste the job description text too — the link is still saved.', 'warning');
+            return;
+        }
     }
 
     const wantResume = document.getElementById('genResume')?.checked;
@@ -2215,12 +2234,14 @@ async function generateSingle() {
                 outputs: 0,
                 jd: jdText.slice(0, 16000),
                 baseName,
+                jobUrl,
                 genOpts: {
                     wantResume: !!wantResume,
                     wantCover: !!wantCover,
                     wantPortfolio: !!wantPortfolio,
                     wantJobDetails: !!wantJobDetails,
-                    template
+                    template,
+                    jobUrl
                 }
             });
             displayHistory();
@@ -2289,7 +2310,7 @@ async function generateSingle() {
 
         const { count: builtCount, matched } = await buildDocumentsFromProfile(
             workingProfile, jdText, baseName,
-            { wantResume, wantCover, wantPortfolio, wantJobDetails, template },
+            { wantResume, wantCover, wantPortfolio, wantJobDetails, template, jobUrl },
             downloadLinks
         );
         count = builtCount;
@@ -2472,6 +2493,21 @@ function updateBulkCost() {
     box.innerHTML = `${count} job(s) × estimated <strong>$${cost.toFixed(4)}</strong> total (if using AI).`;
 }
 
+// Best-effort fetch of a job posting's plain text. Most portals (LinkedIn,
+// Indeed, company ATSes) block cross-origin reads, so this often returns '' —
+// callers must treat an empty result as "couldn't read it, ask for paste".
+async function fetchJDPlainText(url) {
+    if (!url) return '';
+    const resp = await fetch(url);
+    const text = await resp.text();
+    return text
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 async function fetchJDFromURL() {
     const url = (document.getElementById('jdUrl')?.value || '').trim();
     if (!url) {
@@ -2480,19 +2516,14 @@ async function fetchJDFromURL() {
     }
     showToast('Fetching job description...', 'info');
     try {
-        const resp = await fetch(url);
-        const text = await resp.text();
-        // Strip HTML tags to approximate the JD text
-        const plain = text.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
-            .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const plain = await fetchJDPlainText(url);
+        if (!plain) throw new Error('empty response');
         const jdArea = document.getElementById('jdText');
-        if (jdArea) jdArea.value = plain.slice(0, 5000);
-        switchJDInput('paste');
-        document.querySelector('.input-tab')?.classList.add('active');
+        if (jdArea) jdArea.value = plain.slice(0, 8000);
         showToast('Job description fetched. Review and edit as needed.', 'success');
     } catch (error) {
         console.error('JD fetch error:', error);
-        showToast('Could not fetch URL (site may block cross-origin). Please paste the JD manually.', 'error');
+        showToast('Could not fetch that link (the portal likely blocks it). Paste the JD text instead — the link is still saved to job-details.md.', 'error');
     }
 }
 

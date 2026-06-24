@@ -337,12 +337,12 @@
 
                     <div class="mode-selector">
                         <button class="mode-btn active" onclick="switchGeneratorMode('single')">
-                            <span class="mode-icon">☀</span>
+                            <span class="mode-icon">📄</span>
                             <span class="mode-name">Single Resume</span>
                             <span class="mode-desc">Tailor one resume to a job</span>
                         </button>
                         <button class="mode-btn" onclick="switchGeneratorMode('bulk')">
-                            <span class="mode-icon">🌙</span>
+                            <span class="mode-icon">📚</span>
                             <span class="mode-name">Bulk Generation</span>
                             <span class="mode-desc">Generate 5+ resumes at once</span>
                         </button>
@@ -361,19 +361,20 @@
                             <button class="btn btn-secondary" onclick="switchMainTab('profiles'); openProfileCreation();">Create New Profile</button>
                         </div>
 
-                        <!-- Step 2: Job Description -->
+                        <!-- Step 2: Job Description & Link -->
                         <div class="generator-step">
-                            <h3>Step 2: Job Description</h3>
-                            <div class="input-tabs">
-                                <button class="input-tab active" onclick="switchJDInput('paste')">Paste Text</button>
-                                <button class="input-tab" onclick="switchJDInput('url')">Provide URL</button>
+                            <h3>Step 2: Job Description &amp; Link</h3>
+                            <p class="step-hint">Provide the job description, a posting link, or both — both are optional, but include at least one. The link is saved to <code>job-details.md</code> in your published repo even when the portal blocks automated fetching.</p>
+                            <div class="form-group">
+                                <label>Job Posting Link <span class="optional">(optional — LinkedIn, Indeed, Monster, Dice, or the company careers page)</span></label>
+                                <div class="jd-url-row">
+                                    <input type="url" id="jdUrl" placeholder="https://www.linkedin.com/jobs/view/... or https://careers.company.com/job/..." oninput="this.title=this.value" title="" />
+                                    <button class="btn btn-secondary" type="button" onclick="fetchJDFromURL()">Fetch description</button>
+                                </div>
                             </div>
-                            <div id="pasteJD" class="jd-input active">
+                            <div class="form-group">
+                                <label>Job Description <span class="optional">(optional — paste the full text for the best tailoring)</span></label>
                                 <textarea id="jdText" placeholder="Paste the job description here..." rows="8"></textarea>
-                            </div>
-                            <div id="urlJD" class="jd-input" style="display:none;">
-                                <input type="url" id="jdUrl" placeholder="https://careers.company.com/job/..." oninput="this.title=this.value" title="" />
-                                <button class="btn btn-secondary" onclick="fetchJDFromURL()">Fetch JD</button>
                             </div>
                         </div>
 

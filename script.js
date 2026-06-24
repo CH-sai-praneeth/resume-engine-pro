@@ -1932,6 +1932,12 @@ async function recheckHistoryEntry(histId, btnEl) {
     }
 }
 
+// async function declarations inside this load-guard block do not leak to the
+// global scope (no Annex B hoisting), so inline onclick= handlers can't see them.
+// Expose them explicitly, the same way generateSingle is exposed below.
+window.publishHistoryEntry = publishHistoryEntry;
+window.recheckHistoryEntry = recheckHistoryEntry;
+
 // Build the richest possible plain-text source for the model: the full original
 // resume text if we captured it, otherwise a reconstruction from structured data.
 function buildResumeSourceText(profile) {

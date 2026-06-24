@@ -739,6 +739,48 @@ label .optional {
     flex: 0 0 auto;
 }
 
+.bulk-job-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.85rem;
+    margin-bottom: 0.75rem;
+    background: rgba(18, 20, 38, 0.45);
+}
+
+.bulk-job-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.bulk-job-num {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.bulk-job-remove {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.bulk-job-remove:hover {
+    border-color: #ff5a7a;
+    color: #ff5a7a;
+}
+
+.bulk-job-card .jd-url-row {
+    margin-bottom: 0.5rem;
+}
+
 .cost-box {
     background: rgba(0, 153, 255, 0.05);
     border: 1px solid rgba(0, 153, 255, 0.2);

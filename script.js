@@ -1224,6 +1224,8 @@ function switchGeneratorMode(mode) {
     } else if (mode === 'bulk') {
         document.getElementById('bulkMode').style.display = 'block';
         document.querySelector('.mode-btn:nth-of-type(2)').classList.add('active');
+        seedBulkJobs();
+        updateBulkCost();
     }
 }
 
@@ -2346,6 +2348,81 @@ async function generateSingle() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Bulk job cards: each job is a card with an optional posting link + JD text
+// (at least one). A "+ Add another job" button appends cards; the model fans
+// these out — paid/local build sequentially, Ollama dispatches parallel runs.
+// ---------------------------------------------------------------------------
+function bulkJobCardHtml(idx) {
+    return `<div class="bulk-job-card">
+        <div class="bulk-job-head">
+            <span class="bulk-job-num">Job ${idx}</span>
+            <button class="bulk-job-remove" type="button" title="Remove this job" onclick="removeBulkJob(this)">✕</button>
+        </div>
+        <div class="jd-url-row">
+            <input type="url" class="bulk-job-url" placeholder="https://… posting link (optional)" oninput="this.title=this.value; updateBulkCost()" title="" />
+        </div>
+        <textarea class="bulk-job-jd" placeholder="Paste the job description (optional if a link is provided)" rows="4" oninput="updateBulkCost()"></textarea>
+    </div>`;
+}
+
+function renumberBulkJobs() {
+    const list = document.getElementById('bulkJobList');
+    if (!list) return;
+    Array.from(list.querySelectorAll('.bulk-job-card')).forEach((card, i) => {
+        const num = card.querySelector('.bulk-job-num');
+        if (num) num.textContent = 'Job ' + (i + 1);
+    });
+}
+
+function addBulkJob() {
+    const list = document.getElementById('bulkJobList');
+    if (!list) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = bulkJobCardHtml(list.children.length + 1);
+    list.appendChild(wrap.firstElementChild);
+    renumberBulkJobs();
+    updateBulkCost();
+}
+
+function removeBulkJob(btn) {
+    const list = document.getElementById('bulkJobList');
+    const card = btn && btn.closest('.bulk-job-card');
+    if (!list || !card) return;
+    if (list.querySelectorAll('.bulk-job-card').length <= 1) {
+        // Keep at least one card — just clear it instead of removing.
+        const url = card.querySelector('.bulk-job-url'); if (url) url.value = '';
+        const jd = card.querySelector('.bulk-job-jd'); if (jd) jd.value = '';
+        updateBulkCost();
+        return;
+    }
+    card.remove();
+    renumberBulkJobs();
+    updateBulkCost();
+}
+
+// Ensure the bulk list has at least one card (called on load / mode switch).
+function seedBulkJobs() {
+    const list = document.getElementById('bulkJobList');
+    if (list && !list.querySelector('.bulk-job-card')) {
+        addBulkJob();
+        addBulkJob();
+    }
+}
+
+// Read non-empty job cards as { url, jd } objects.
+function readBulkJobs() {
+    const list = document.getElementById('bulkJobList');
+    if (!list) return [];
+    return Array.from(list.querySelectorAll('.bulk-job-card')).map(card => ({
+        url: (card.querySelector('.bulk-job-url')?.value || '').trim(),
+        jd: (card.querySelector('.bulk-job-jd')?.value || '').trim()
+    })).filter(j => j.url || j.jd);
+}
+
+window.addBulkJob = addBulkJob;
+window.removeBulkJob = removeBulkJob;
+
 async function generateBulk() {
     const select = document.getElementById('bulkProfile');
     const profileId = select && select.value;
@@ -2358,45 +2435,112 @@ async function generateBulk() {
         showToast('Selected profile not found', 'error');
         return;
     }
-    const raw = (document.getElementById('bulkJDs')?.value || '').trim();
-    if (!raw) {
-        showToast('Please paste one or more job descriptions', 'warning');
-        return;
-    }
-    // Split on blank lines (one JD block per paragraph)
-    const jds = raw.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
-    if (!jds.length) {
-        showToast('No job descriptions detected', 'warning');
+    const jobs = readBulkJobs();
+    if (!jobs.length) {
+        showToast('Add at least one job (a description or a posting link)', 'warning');
         return;
     }
 
     const statusBox = document.getElementById('bulkStatus');
     const statusContent = document.getElementById('bulkStatusContent');
     if (statusBox) statusBox.style.display = 'block';
-    if (statusContent) statusContent.innerHTML = `<p>⏳ Generating resumes for ${jds.length} job(s)...</p>`;
+    const setMsg = (html) => { if (statusContent) statusContent.innerHTML = html; };
 
+    const provider = document.getElementById('bulkAiProvider')?.value;
     const baseName = safeFileName(profile.displayName || profile.name);
+
+    // Best-effort: when a card has only a link, try to read the JD text once so
+    // every engine downstream gets real content (portals usually block this).
+    setMsg(`<p>⏳ Preparing ${jobs.length} job(s)…</p>`);
+    for (const job of jobs) {
+        if (!job.jd && job.url) {
+            try { job.jd = (await fetchJDPlainText(job.url)).slice(0, 8000); } catch (_) { job.jd = ''; }
+        }
+    }
+
+    // ---- Free Ollama cloud: fan out one ephemeral runner per job, in parallel.
+    if (provider === 'ollama') {
+        if (!window.GitHubRunner || !GitHubRunner.hasToken()) {
+            setMsg('<p>⚙️ Ollama runs in free GitHub cloud runners. Add a GitHub token in <strong>Settings → Ollama</strong>, then click Generate All again.</p>');
+            showToast('Add a GitHub token in Settings to use the Ollama cloud generator', 'warning');
+            return;
+        }
+        const usable = jobs.filter(j => j.jd);
+        const skipped = jobs.length - usable.length;
+        if (!usable.length) {
+            setMsg('<p>❌ None of these jobs has a job description. Paste the JD text for at least one (links alone could not be read by the portal).</p>');
+            showToast('Add job description text — the links could not be auto-read', 'warning');
+            return;
+        }
+        const model = (window.AIIntegration && AIIntegration.getOllamaConfig)
+            ? (AIIntegration.getOllamaConfig().model || GitHubRunner.getConfig().model)
+            : GitHubRunner.getConfig().model;
+        const resumeText = buildResumeSourceText(profile);
+        const genOptsBase = { wantResume: true, wantCover: true, wantPortfolio: true, wantJobDetails: true, template: 'minimalist' };
+
+        setMsg(`<p>⏳ Launching ${usable.length} parallel cloud runner(s) on GitHub…</p>`);
+        const results = await Promise.allSettled(usable.map(async (job) => {
+            const meta = extractJobMeta(job.jd);
+            let histId = null;
+            try {
+                histId = StorageManager.saveGeneration({
+                    profile: profile.displayName || profile.name || 'Profile',
+                    profileId,
+                    jobTitle: meta.title || '',
+                    company: meta.company || '',
+                    provider: 'ollama',
+                    mode: 'smart',
+                    status: 'in-progress',
+                    cost: 0,
+                    outputs: 0,
+                    jd: job.jd.slice(0, 16000),
+                    baseName,
+                    jobUrl: job.url,
+                    genOpts: { ...genOptsBase, jobUrl: job.url }
+                });
+            } catch (_) {}
+            const { runId } = await GitHubRunner.dispatch({ resumeData: resumeText, jobDescription: job.jd, model });
+            try { if (histId) StorageManager.updateGeneration(histId, { runId }); } catch (_) {}
+            return runId;
+        }));
+
+        const started = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.length - started;
+        try { displayHistory(); } catch (_) {}
+        scheduleResumeCheck();
+        const actionsUrl = (window.GitHubRunner && GitHubRunner.actionsUrl) ? GitHubRunner.actionsUrl() : '#';
+        setMsg(`<div class="cloud-error">
+            <p>✅ <strong>${started} cloud runner(s) launched in parallel.</strong> They run on GitHub's servers — you can leave this tab and keep working; each job appears in <strong>History</strong> and flips to <em>Success</em> on its own (~2–4 min each).</p>
+            <ol class="cloud-error-steps">
+                <li>Watch progress in <strong>History</strong>, or on your <a href="${actionsUrl}" target="_blank" rel="noopener">Actions tab</a>.</li>
+                <li>When a job is ready, click <strong>📤 Publish</strong> on its History row to create the repo + live portfolio and add it to the tracker.</li>
+                ${skipped ? `<li>⚠️ ${skipped} link-only job(s) were skipped because the portal blocked auto-reading — paste their JD text and run again.</li>` : ''}
+                ${failed ? `<li>⚠️ ${failed} job(s) failed to start (likely a token/permission issue) — check Settings → Ollama.</li>` : ''}
+            </ol>
+            <p class="cloud-error-cost">💸 Public repo → GitHub Actions minutes are <strong>unlimited &amp; free ($0)</strong>. Each runner shuts itself down when done.</p>
+        </div>`);
+        showToast(`Launched ${started} parallel Ollama cloud run(s) — track them in History`, 'success');
+        return;
+    }
+
+    // ---- Paid / Pollinations / local: build resume PDFs sequentially.
+    const useAI = provider && window.AIIntegration && AIIntegration.isConfigured(provider);
     const linkWrap = document.createElement('div');
     linkWrap.className = 'download-section';
     let done = 0;
-
-    // Optional AI tailoring per job when a bulk provider key is configured
-    const provider = document.getElementById('bulkAiProvider')?.value;
-    const useAI = provider && window.AIIntegration && AIIntegration.isConfigured(provider);
-
     try {
-        for (let i = 0; i < jds.length; i++) {
-            if (statusContent) statusContent.innerHTML = `<p>⏳ Generating resume ${i + 1} of ${jds.length}${useAI ? ' (AI tailoring)' : ''}...</p>`;
+        for (let i = 0; i < jobs.length; i++) {
+            setMsg(`<p>⏳ Generating resume ${i + 1} of ${jobs.length}${useAI ? ' (AI tailoring)' : ''}…</p>`);
             let workingProfile = profile;
             if (useAI) {
                 try {
-                    const r = await tailorProfileWithAI(profile, jds[i], provider, 'smart');
+                    const r = await tailorProfileWithAI(profile, jobs[i].jd, provider, 'smart');
                     workingProfile = r.profile;
                 } catch (e) {
                     console.warn(`AI tailoring failed for job ${i + 1}, using local:`, e.message);
                 }
             }
-            const matched = matchSkillsToJD(normalizeProfile(workingProfile), jds[i]);
+            const matched = matchSkillsToJD(normalizeProfile(workingProfile), jobs[i].jd);
             const pdfBlob = await buildResumePdfBlob(workingProfile, matched);
             addDownloadLink(linkWrap, pdfBlob, `${baseName}_Resume_${i + 1}.pdf`, `Resume #${i + 1} (PDF)`);
             done++;
@@ -2411,7 +2555,7 @@ async function generateBulk() {
         showToast(`Generated ${done} resume(s)`, 'success');
     } catch (error) {
         console.error('Bulk generation error:', error);
-        if (statusContent) statusContent.innerHTML = `<p>❌ Bulk generation failed: ${escHtml(error.message)}</p>`;
+        setMsg(`<p>❌ Bulk generation failed: ${escHtml(error.message)}</p>`);
         showToast('Bulk generation failed: ' + error.message, 'error');
     }
 }
@@ -2469,12 +2613,16 @@ function refreshGenerationModeLabels(provider) {
 
 function updateBulkCost() {
     const provider = document.getElementById('bulkAiProvider')?.value;
-    const raw = (document.getElementById('bulkJDs')?.value || '').trim();
-    const count = raw ? raw.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean).length : 0;
+    const jobs = readBulkJobs();
+    const count = jobs.length;
     const box = document.getElementById('bulkCostEstimate');
     if (!box) return;
+    if (!count) {
+        box.innerHTML = 'Add jobs to see the cost estimate…';
+        return;
+    }
     if (!provider) {
-        box.innerHTML = `${count} job(s) detected — generated locally for free.`;
+        box.innerHTML = `${count} job(s) detected — generated locally for free ($0.00).`;
         return;
     }
     if (provider === 'pollinations') {
@@ -2482,7 +2630,7 @@ function updateBulkCost() {
         return;
     }
     if (provider === 'ollama') {
-        box.innerHTML = `${count} job(s) × <strong>Ollama / Llama 3</strong> — free, runs in an ephemeral GitHub cloud runner (single-resume tab supported).`;
+        box.innerHTML = `${count} job(s) × <strong>Ollama / Llama 3</strong> — $0.00. Each launches its own free GitHub cloud runner, so all ${count} run <strong>in parallel</strong>. Track them in History.`;
         return;
     }
     if (provider === 'custom') {
@@ -2490,7 +2638,7 @@ function updateBulkCost() {
         return;
     }
     const cost = (window.AIIntegration && AIIntegration.getBulkCost) ? AIIntegration.getBulkCost(provider, count, 'smart') : 0;
-    box.innerHTML = `${count} job(s) × estimated <strong>$${cost.toFixed(4)}</strong> total (if using AI).`;
+    box.innerHTML = `${count} job(s) × estimated <strong>$${cost.toFixed(4)}</strong> total.`;
 }
 
 // Best-effort fetch of a job posting's plain text. Most portals (LinkedIn,

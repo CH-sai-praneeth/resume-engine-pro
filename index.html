@@ -466,9 +466,11 @@
                         </select>
                     </div>
 
-                    <div class="form-group">
-                        <label>Paste Job Descriptions (one per line, or comma-separated URLs):</label>
-                        <textarea id="bulkJDs" placeholder="Paste multiple JDs or URLs..." rows="8"></textarea>
+                    <div class="generator-step">
+                        <h3>Jobs to Generate</h3>
+                        <p class="step-hint">Add one card per job — paste the description, a posting link (LinkedIn, Indeed, Monster, Dice, or a company careers page), or both. Each card needs at least one. The link is saved to <code>job-details.md</code> in each published repo even when the portal blocks automated fetching.</p>
+                        <div id="bulkJobList"></div>
+                        <button class="btn btn-secondary" type="button" onclick="addBulkJob()">＋ Add another job</button>
                     </div>
 
                     <div class="form-group">
@@ -476,7 +478,7 @@
                         <select id="bulkAiProvider" onchange="updateBulkCost()">
                             <option value="">None — generate locally (free, no AI)</option>
                             <option value="pollinations">Free AI (Pollinations — no key needed)</option>
-                            <option value="ollama">Ollama / Llama 3 (free — auto-runs in a GitHub cloud runner)</option>
+                            <option value="ollama">Ollama / Llama 3 (free — parallel GitHub cloud runners)</option>
                             <option value="custom">Custom / Your own AI provider</option>
                             <option value="openai">OpenAI — needs your key</option>
                             <option value="claude">Claude — needs your key</option>
@@ -486,7 +488,7 @@
                     </div>
 
                     <div id="bulkCostEstimate" class="cost-box">
-                        Enter JDs to see cost estimate...
+                        Add jobs to see the cost estimate…
                     </div>
 
                     <div class="button-group">

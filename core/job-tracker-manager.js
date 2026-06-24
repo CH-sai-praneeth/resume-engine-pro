@@ -8,12 +8,12 @@ const JobTrackerManager = {
     
     // Default applications (from your existing tracker)
     defaultApps: [
-        { id:1, portfolio:'RD-Profile', role:'Technical Support Director', company:'Boulevard', date:'2026-06-10', link:'https://rdammala.github.io/RD-Profile/', status:'Applied', comments:'' },
-        { id:2, portfolio:'Senior-Incident-Manager', role:'Senior Incident Manager', company:'Amazon Prime Video', date:'2026-06-11', link:'https://rdammala.github.io/Senior-Incident-Manager/', status:'Applied', comments:'' },
-        { id:3, portfolio:'Staff-Escalation-Manager', role:'Staff Escalation Manager', company:'Snowflake', date:'2026-06-12', link:'https://rdammala.github.io/Staff-Escalation-Manager/', status:'Applied', comments:'' },
-        { id:4, portfolio:'Technical-Lead-Deployment-Operations', role:'Technical Lead, Deployment Operations', company:'OpenAI', date:'2026-06-13', link:'https://rdammala.github.io/Technical-Lead-Deployment-Operations/', status:'Applied', comments:'' },
-        { id:5, portfolio:'Manager-Cloud-Support', role:'Manager, Cloud Support Engineering', company:'Cox Enterprises / RapidScale', date:'2026-06-14', link:'https://rdammala.github.io/Manager-Cloud-Support/', status:'Denied', comments:'Application denied due to no visa sponsorship; candidate on H1B.' },
-        { id:6, portfolio:'Senior-Manager-SRE', role:'Senior Manager, Site Reliability Engineering', company:'NVIDIA', date:'2026-06-14', link:'https://rdammala.github.io/Senior-Manager-SRE/', status:'Applied', comments:'' }
+        { id:1, portfolio:'RD-Profile', role:'Technical Support Director', company:'Boulevard', date:'2026-06-10', link:'https://rdammala.github.io/RD-Profile/', repo:'https://github.com/rdammala/RD-Profile', status:'Applied', comments:'' },
+        { id:2, portfolio:'Senior-Incident-Manager', role:'Senior Incident Manager', company:'Amazon Prime Video', date:'2026-06-11', link:'https://rdammala.github.io/Senior-Incident-Manager/', repo:'https://github.com/rdammala/Senior-Incident-Manager', status:'Applied', comments:'' },
+        { id:3, portfolio:'Staff-Escalation-Manager', role:'Staff Escalation Manager', company:'Snowflake', date:'2026-06-12', link:'https://rdammala.github.io/Staff-Escalation-Manager/', repo:'https://github.com/rdammala/Staff-Escalation-Manager', status:'Applied', comments:'' },
+        { id:4, portfolio:'Technical-Lead-Deployment-Operations', role:'Technical Lead, Deployment Operations', company:'OpenAI', date:'2026-06-13', link:'https://rdammala.github.io/Technical-Lead-Deployment-Operations/', repo:'https://github.com/rdammala/Technical-Lead-Deployment-Operations', status:'Applied', comments:'' },
+        { id:5, portfolio:'Manager-Cloud-Support', role:'Manager, Cloud Support Engineering', company:'Cox Enterprises / RapidScale', date:'2026-06-14', link:'https://rdammala.github.io/Manager-Cloud-Support/', repo:'https://github.com/rdammala/Manager-Cloud-Support', status:'Denied', comments:'Application denied due to no visa sponsorship; candidate on H1B.' },
+        { id:6, portfolio:'Senior-Manager-SRE', role:'Senior Manager, Site Reliability Engineering', company:'NVIDIA', date:'2026-06-14', link:'https://rdammala.github.io/Senior-Manager-SRE/', repo:'https://github.com/rdammala/Senior-Manager-SRE', status:'Applied', comments:'' }
     ],
     
     genericResumes: [
@@ -35,8 +35,12 @@ const JobTrackerManager = {
         // Merge new default apps with stored ones
         const byPortfolio = new Map(stored.map(a => [a.portfolio, a]));
         this.defaultApps.forEach(d => {
-            if (!byPortfolio.has(d.portfolio)) {
+            const existing = byPortfolio.get(d.portfolio);
+            if (!existing) {
                 stored.push(d);
+            } else if (!existing.repo && d.repo) {
+                // Backfill repo link onto previously stored default entries
+                existing.repo = d.repo;
             }
         });
         

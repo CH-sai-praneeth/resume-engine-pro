@@ -544,5 +544,39 @@ const backup = StorageManager.exportAll();      // { type: 'full-backup', data: 
 download('resume-engine-pro-backup_' + stamp + '.json', JSON.stringify(backup));`,
         lesson: 'Inline onclick handlers can only call functions on the global object, so any handler must be verifiably global. Remember the asymmetry in block scoping: plain function declarations leak to the enclosing scope in sloppy mode, but async, generator, and class declarations do not, so inside any wrapper block they must be attached to window by hand. When a regular function and an async function sit side by side and only the async one is undefined at runtime, suspect exactly this. More broadly, if the only copy of user data lives in browser storage, treat a one-click export and restore as a first-class feature, warn before destructive clears, and timestamp every backup so restores are unambiguous.',
         impact: 'High - the Re-check and Publish actions work again, the settings menu is reachable, the tracker toolbar reads correctly, and users can now take a single timestamped backup of everything and restore it after clearing browser data.'
+    },
+    {
+        id: 29,
+        title: 'Every GitHub API Call Blocked by CORS Because We Sent a Cache-Control Request Header + Re-check Reconciliation Hardened',
+        severity: 'high',
+        status: 'Fixed',
+        role: 'Frontend Developer / SRE / DevOps',
+        fixTime: '60 min',
+        description: 'After the stuck-row reconciler shipped, Re-check still did nothing and successful cloud runs stayed stuck on In progress. The browser console was flooded with: "Access to fetch at https://api.github.com/repos/rdammala/resume-engine-pro/... from origin https://rdammala.github.io has been blocked by CORS policy: Request header field cache-control is not allowed by Access-Control-Allow-Headers in preflight response", and every request failed with net::ERR_FAILED. So findRun, checkAndFetch, fetchResult, waitForCompletion and listRecentRuns could never read run status, and rows never reconciled. Two reconciliation defects from the prior pass also contributed: a succeeded run whose document rebuild threw was left stranded In progress, and checkAndFetch made a fragile second per-run API call that could blip and falsely report Still running.',
+        rootCause: 'To defeat stale, cached run-list responses we had added a Cache-Control: no-cache (and on findRun an If-None-Match) REQUEST header to the fetch calls. Sending any non-simple request header to a cross-origin endpoint triggers a CORS preflight (OPTIONS), and the GitHub REST API does not list cache-control in its Access-Control-Allow-Headers, so the preflight failed and the browser blocked the actual request entirely. The cache-buster ?t=Date.now() query param was already present and is sufficient to defeat caching on its own, making the header pure liability. Separately, finalizeResumedRun caught a document-rebuild error with only a console.warn, leaving a genuinely successful run stranded In progress, and checkAndFetch did a second runs/{id} GET after findRun whose transient failure surfaced as a false pending.',
+        resolution: 'Removed the Cache-Control and If-None-Match request headers from all five GitHub fetch helpers (findRun, waitForCompletion, checkAndFetch, fetchResult, listRecentRuns); cache-busting now relies solely on the existing ?t= query param, which needs no preflight and is treated as a simple request. Made Re-check authoritative: recheckHistoryEntry now reads the recent run list once and resolves the row directly from each items status and conclusion (success -> fetch result and finalize, failure -> mark failed, otherwise still running) with an import-latest fallback for legacy rows. finalizeResumedRun now always marks a successful run as Success even if the derived document rebuild throws, attaching a note to use Publish or Re-check, instead of stranding the row. checkAndFetch was hardened to read status and conclusion straight from the findRun run-list item (no second call) and given more findRun attempts.',
+        codeExample: `// BROKEN: a Cache-Control REQUEST header forces a CORS preflight that
+// api.github.com rejects -> whole request fails with net::ERR_FAILED.
+fetch(url + '?t=' + Date.now(), {
+  headers: { 'Cache-Control': 'no-cache', 'If-None-Match': '' }
+}); // CORS: cache-control not in Access-Control-Allow-Headers
+
+// FIXED: the ?t= query param already busts the cache; send no extra header,
+// so the request stays "simple" and skips preflight entirely.
+fetch(url + '?t=' + Date.now());
+
+// Re-check reads status/conclusion straight from the run list (one call):
+const run = runs.find(r => (r.name || r.display_title || '').includes(runId));
+if (run.status === 'completed') {
+  run.conclusion === 'success'
+    ? await finalizeResumedRun(item, await GitHubRunner.fetchResult(runId))
+    : StorageManager.updateGeneration(item.id, { status: 'failed' });
+}
+
+// finalizeResumedRun never strands a succeeded run anymore:
+try { rebuildDocuments(aiData); StorageManager.updateGeneration(id, { status:'success' }); }
+catch (e) { StorageManager.updateGeneration(id, { status:'success', note:'Rebuild failed - use Publish/Re-check.' }); }`,
+        lesson: 'When calling a cross-origin API from the browser, every request header you add is a CORS liability: any non-simple header (Cache-Control, If-None-Match, custom X- headers) forces a preflight, and if the server does not echo it in Access-Control-Allow-Headers the real request is blocked outright - so prefer a ?t= cache-buster query param over a no-cache header for defeating caches. Read a console "blocked by CORS policy: request header field X is not allowed" as "remove header X", not "the endpoint is down". And never let a derived step (document rebuild) failure mask the true terminal state of an async job - mark the job success and degrade the side effect, rather than stranding the record.',
+        impact: 'High - GitHub API calls succeed again, Re-check now authoritatively flips success rows to Success (rebuilding and offering the documents) and failed rows to Failed, the 30s background reconciler works, and a successful run is never stranded In progress even when the optional document rebuild hiccups.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

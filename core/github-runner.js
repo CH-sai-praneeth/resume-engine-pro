@@ -94,14 +94,15 @@ const GitHubRunner = {
 
     // ----- locate the run we just triggered (dispatch returns no id) -----
     // GitHub's run-list endpoint is eventually consistent and browsers/CDNs
-    // cache it, so we add a cache-buster + no-cache header and poll generously.
+    // cache it, so we bust the cache with a `?t=` query param and poll
+    // generously. NOTE: do NOT send Cache-Control/If-None-Match request headers —
+    // GitHub's CORS preflight rejects them (Access-Control-Allow-Headers does not
+    // include cache-control), which fails the whole request with net::ERR_FAILED.
     async findRun(runId, attempts = 40) {
         const cfg = this.getConfig();
         for (let i = 0; i < attempts; i++) {
             try {
-                const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs?event=workflow_dispatch&per_page=20&t=${Date.now()}`, {
-                    headers: { 'Cache-Control': 'no-cache', 'If-None-Match': '' }
-                });
+                const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs?event=workflow_dispatch&per_page=20&t=${Date.now()}`);
                 if (res.ok) {
                     const data = await res.json();
                     const run = (data.workflow_runs || []).find(r =>
@@ -135,9 +136,7 @@ const GitHubRunner = {
         for (let i = 0; i < 220; i++) { // ~11 min at 3s
             let r = null;
             try {
-                const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs/${run.id}?t=${Date.now()}`, {
-                    headers: { 'Cache-Control': 'no-cache' }
-                });
+                const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs/${run.id}?t=${Date.now()}`);
                 if (res.ok) r = await res.json();
             } catch (_) {
                 // Transient network error — keep polling, the run is still going.
@@ -188,9 +187,7 @@ const GitHubRunner = {
         const filePath = `generated/${runId}.json`;
         for (let i = 0; i < 12; i++) {
             try {
-                const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/contents/${filePath}?ref=${cfg.ref}&t=${Date.now()}`, {
-                    headers: { 'Cache-Control': 'no-cache' }
-                });
+                const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/contents/${filePath}?ref=${cfg.ref}&t=${Date.now()}`);
                 if (res.ok) {
                     const data = await res.json();
                     const b64 = String(data.content || '').replace(/\n/g, '');
@@ -211,9 +208,7 @@ const GitHubRunner = {
     async listRecentRuns(n = 10) {
         const cfg = this.getConfig();
         try {
-            const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs?event=workflow_dispatch&per_page=${n}&t=${Date.now()}`, {
-                headers: { 'Cache-Control': 'no-cache' }
-            });
+            const res = await this.api(`/repos/${cfg.owner}/${cfg.repo}/actions/runs?event=workflow_dispatch&per_page=${n}&t=${Date.now()}`);
             if (res.ok) {
                 const d = await res.json();
                 return d.workflow_runs || [];

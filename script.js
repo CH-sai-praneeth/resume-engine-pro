@@ -935,7 +935,12 @@ window.addEventListener('click', (e) => {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
+    // Run init, then hand off from the anti-flash boot CSS to the normal .active
+    // rules. .finally guarantees .js-ready is set even if init throws, so tab
+    // switching is never left disabled.
+    initializeApp().finally(() => {
+        document.documentElement.classList.add('js-ready');
+    });
 
     // Normalize the Generation Mode price tags for the default provider on load
     if (typeof refreshGenerationModeLabels === 'function') {

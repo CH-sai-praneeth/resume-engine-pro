@@ -344,6 +344,25 @@ body {
     visibility: visible !important;
 }
 
+/* ============================================================================
+   ANTI-FLASH BOOT STATE
+   Driven by the inline boot script in index.html (sets data-boot / data-tab on
+   <html>). Shows the correct page + last-used tab on the very first paint so a
+   refresh no longer flashes the login/dashboard before the async session check
+   restores your tab. Only applies until script.js adds <html class="js-ready">,
+   after which the normal .active rules take over (so tab switching still works).
+   ============================================================================ */
+html:not(.js-ready)[data-boot="login"] #appPage { display: none !important; }
+html:not(.js-ready)[data-boot="app"] #loginPage { display: none !important; }
+html:not(.js-ready)[data-boot="app"] #appPage { display: block !important; }
+html:not(.js-ready)[data-boot="app"] .main-tab-content { display: none !important; }
+html:not(.js-ready)[data-boot="app"][data-tab="dashboard"] #dashboard,
+html:not(.js-ready)[data-boot="app"][data-tab="profiles"] #profiles,
+html:not(.js-ready)[data-boot="app"][data-tab="generator"] #generator,
+html:not(.js-ready)[data-boot="app"][data-tab="applications"] #applications,
+html:not(.js-ready)[data-boot="app"][data-tab="history"] #history,
+html:not(.js-ready)[data-boot="app"][data-tab="settings"] #settings { display: block !important; }
+
 .main-tab-content h2 {
     margin-bottom: 1.5rem;
     color: #00d9ff;

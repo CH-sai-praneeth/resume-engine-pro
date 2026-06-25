@@ -714,5 +714,39 @@ upsertApplicationByRepo(app){
 }`,
         lesson: 'When a write succeeds but the user says nothing happened, suspect ordering and visibility before suspecting persistence. Appending to the end of a long list hides the result below the fold - surface new items where the eye lands (the top). Make idempotent actions actually idempotent (upsert by a stable key) so repeating them refreshes rather than duplicates. And never swallow a best-effort write with an empty catch: at minimum log it and toast, or a real failure becomes an invisible one.',
         impact: 'Medium - publishing now visibly updates the tracker (new row at the top) and re-publishing updates the same row instead of piling up duplicates, restoring trust that the end-to-end Generate -> Publish -> Track flow works.'
+    },
+    {
+        id: 35,
+        title: 'Refresh Flashed the Login/Dashboard for a Split Second Before Restoring the Last Tab (FOUC)',
+        severity: 'low',
+        status: 'Fixed',
+        role: 'Frontend Developer / UX',
+        fixTime: '40 min',
+        description: 'On the main app, refreshing the browser on any tab briefly flashed the home view (the login screen, or the Dashboard tab) for a split second, then jumped to the tab the user was actually on. It happened on every reload and felt janky even though the app ended up on the correct tab.',
+        rootCause: 'Classic flash-of-unstyled/incorrect-content (FOUC) in a JS-driven single-page app with no server rendering. The static HTML hard-codes the initial visible state: #loginPage has class "page active" and #dashboard has "main-tab-content active", so the browser paints those immediately. The real state is only applied later by initializeApp(), which is async and awaits GitHubManager.loadSession() -> authenticate() (a network round-trip to api.github.com). Only after that promise resolves does showPage(\"appPage\") + restoreActiveTab() swap to the saved tab. The gap between first paint and the async resolution is the visible flash.',
+        resolution: 'Decide the correct view SYNCHRONOUSLY before first paint. A tiny inline <script> in <head> reads localStorage directly - the presence of a github key under resumeEngineProV1_apiKeys (logged-in?) and activeMainTab (last tab) - and sets data-boot ("app"/"login") and data-tab on <html>. New CSS gated on html:not(.js-ready)[data-boot=...][data-tab=...] shows the right page + tab on the very first paint, overriding the static .active classes via higher specificity + !important. A second inline script at the end of <body> also pre-activates the saved tab BUTTON + content so the highlight is consistent during the async session check. Finally, script.js adds <html class="js-ready"> via initializeApp().finally(...), which deactivates the boot CSS and hands control back to the normal .active rules - so ongoing tab switching is unaffected, and an invalid stored session still corrects to login.',
+        codeExample: `<!-- index.html <head>: decide the view before the first paint -->
+<script>
+  (function () {
+    var VALID = ['dashboard','profiles','generator','applications','history','settings'];
+    var raw = localStorage.getItem('resumeEngineProV1_apiKeys');
+    var hasGithub = !!(raw && JSON.parse(raw).github && JSON.parse(raw).github.key);
+    var tab = localStorage.getItem('activeMainTab');
+    if (VALID.indexOf(tab) === -1) tab = 'dashboard';
+    document.documentElement.setAttribute('data-boot', hasGithub ? 'app' : 'login');
+    document.documentElement.setAttribute('data-tab', tab);
+  })();
+</script>
+
+/* style.css: show the right page + tab instantly, until JS is ready */
+html:not(.js-ready)[data-boot="app"] #loginPage { display: none !important; }
+html:not(.js-ready)[data-boot="app"] #appPage  { display: block !important; }
+html:not(.js-ready)[data-boot="app"] .main-tab-content { display: none !important; }
+html:not(.js-ready)[data-boot="app"][data-tab="applications"] #applications { display: block !important; }
+
+// script.js: hand off from boot CSS to normal .active rules (even if init throws)
+initializeApp().finally(() => document.documentElement.classList.add('js-ready'));`,
+        lesson: 'In a client-rendered SPA, anything the HTML hard-codes as visible will flash if the real state is decided asynchronously (especially behind a network call). Make the initial-state decision synchronous and pre-paint: read persisted state from localStorage in an inline <head> script and drive the first paint with CSS attribute selectors. Gate that boot CSS on a :not(.js-ready) latch that the app removes once it has applied the true state, so the anti-flash layer never fights normal interaction afterward. Optimistically render the logged-in view from a synchronous signal (a stored token) and let the slower async validation correct the rare invalid case.',
+        impact: 'Low - purely cosmetic, but the app now loads straight into the correct page and tab on every refresh with no login/dashboard flash, making it feel instant and native instead of janky.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

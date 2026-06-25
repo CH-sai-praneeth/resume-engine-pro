@@ -4,6 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Resume Engine Pro - Advanced Resume & Portfolio Generator</title>
+
+    <!-- Anti-flash boot: decide the correct page + last tab SYNCHRONOUSLY before
+         the first paint, straight from localStorage. Without this, a refresh
+         paints the login/dashboard for a split second before the async GitHub
+         session check swaps to your last-used tab. style.css uses the data-boot
+         / data-tab attributes set here to show the right view immediately, then
+         hands off to the normal .active rules once script.js adds .js-ready. -->
+    <script>
+        (function () {
+            try {
+                var VALID = ['dashboard', 'profiles', 'generator', 'applications', 'history', 'settings'];
+                var hasGithub = false;
+                var raw = localStorage.getItem('resumeEngineProV1_apiKeys');
+                if (raw) {
+                    var keys = JSON.parse(raw);
+                    hasGithub = !!(keys && keys.github && keys.github.key);
+                }
+                var tab = localStorage.getItem('activeMainTab');
+                if (VALID.indexOf(tab) === -1) tab = 'dashboard';
+                var html = document.documentElement;
+                html.setAttribute('data-boot', hasGithub ? 'app' : 'login');
+                html.setAttribute('data-tab', tab);
+            } catch (e) {
+                document.documentElement.setAttribute('data-boot', 'login');
+            }
+        })();
+    </script>
+
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -800,6 +828,31 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- Anti-flash polish: pre-activate the saved tab's button + content (the
+         boot CSS already shows the right content on first paint; this keeps the
+         tab highlight consistent during the async GitHub session check, so the
+         "Dashboard" tab isn't briefly highlighted while another tab is shown).
+         If the stored session turns out invalid, script.js corrects to login. -->
+    <script>
+        (function () {
+            try {
+                if (document.documentElement.getAttribute('data-boot') !== 'app') return;
+                var tab = document.documentElement.getAttribute('data-tab') || 'dashboard';
+                var login = document.getElementById('loginPage');
+                var app = document.getElementById('appPage');
+                if (login) login.classList.remove('active');
+                if (app) app.classList.add('active');
+                document.querySelectorAll('.main-tab-content').forEach(function (el) {
+                    el.classList.toggle('active', el.id === tab);
+                });
+                document.querySelectorAll('.main-tab-btn').forEach(function (btn) {
+                    var oc = btn.getAttribute('onclick') || '';
+                    btn.classList.toggle('active', oc.indexOf("'" + tab + "'") !== -1);
+                });
+            } catch (e) { /* non-fatal — script.js will still initialize */ }
+        })();
+    </script>
 </body>
 </html>
 

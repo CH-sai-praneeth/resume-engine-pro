@@ -709,7 +709,7 @@ async function initializeGithubRepo(btn) {
         showToast('Please sign in with GitHub first', 'warning');
         return;
     }
-    const repoName = (document.getElementById('githubDataRepo')?.value || '').trim() || 'resume-engine-data';
+    const repoName = (document.getElementById('dataRepoName')?.value || document.getElementById('githubDataRepo')?.value || '').trim() || 'resume-engine-data';
     const access = document.querySelector('input[name="repoAccess"]:checked');
     const isPrivate = !access || access.value !== 'public';
     const orig = btn ? btn.innerHTML : '';
@@ -931,10 +931,26 @@ function renderAIStatus() {
 
     // Curated display order (paid first, then free, then custom).
     const order = ['openai', 'claude', 'gemini', 'mistral', 'ollama', 'pollinations', 'custom'];
+    const hasGhToken = !!(window.GitHubRunner && GitHubRunner.hasToken && GitHubRunner.hasToken());
+
+    // One consistent pattern: "✓ Ready" (green) when usable now, otherwise a
+    // short action telling the user exactly what to add.
+    const statusOf = (id) => {
+        if (id === 'pollinations') return { ready: true, label: '✓ Ready · free' };
+        if (id === 'ollama') return hasGhToken
+            ? { ready: true, label: '✓ Ready · free' }
+            : { ready: false, label: 'Add GitHub token' };
+        if (id === 'custom') return AIIntegration.isConfigured('custom')
+            ? { ready: true, label: '✓ Ready' }
+            : { ready: false, label: 'Add endpoint' };
+        return AIIntegration.isConfigured(id)
+            ? { ready: true, label: '✓ Ready' }
+            : { ready: false, label: 'Add API key' };
+    };
+
     const rows = order.map(id => {
         const p = AIIntegration.providers[id];
         if (!p) return '';
-        const configured = AIIntegration.isConfigured(id);
 
         // Resolve the model actually in effect for this provider.
         let model = p.model || '';
@@ -943,27 +959,17 @@ function renderAIStatus() {
             if (id === 'custom' && AIIntegration.getCustomConfig) model = AIIntegration.getCustomConfig().model || model;
         } catch (_) {}
 
-        let badge, cls;
-        if (id === 'ollama' || id === 'pollinations') {
-            badge = configured ? '🟢 Ready · free' : '⚪ Not set';
-            cls = configured ? 'ok' : 'off';
-        } else if (id === 'custom') {
-            badge = configured ? '🟢 Configured' : '⚪ Not set';
-            cls = configured ? 'ok' : 'off';
-        } else {
-            badge = configured ? '✅ Key set' : '⚪ No key';
-            cls = configured ? 'ok' : 'off';
-        }
-
+        const st = statusOf(id);
+        const cls = st.ready ? 'ok' : 'off';
         const modelHtml = model ? `<small style="opacity:.7;"> · ${escHtml(model)}</small>` : '';
         return `<div class="ai-status-item ai-${cls}">
             <span>${escHtml(p.name)}${modelHtml}</span>
-            <span class="ai-status-badge">${badge}</span>
+            <span class="ai-status-badge">${st.label}</span>
         </div>`;
     }).join('');
 
-    const readyCount = order.filter(id => AIIntegration.providers[id] && AIIntegration.isConfigured(id)).length;
-    el.innerHTML = rows + `<div class="ai-status-foot">${readyCount} engine(s) ready · <a href="#" onclick="switchMainTab('settings');return false;">Manage in Settings</a></div>`;
+    const readyCount = order.filter(id => AIIntegration.providers[id] && statusOf(id).ready).length;
+    el.innerHTML = rows + `<div class="ai-status-foot">${readyCount} engine(s) ready to use · <a href="#" onclick="switchMainTab('settings');return false;">Manage in Settings</a></div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1087,6 +1093,19 @@ function toggleAppTheme() {
 window.toggleAppTheme = toggleAppTheme;
 window.applyAppThemeIcon = applyAppThemeIcon;
 
+// Help & FAQ modal (opened by the floating ? button, dashboard hints, and the
+// various "need help?" links). Pure DOM toggle — no data is touched.
+function openHelp() {
+    const m = document.getElementById('helpModal');
+    if (m) { m.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+}
+function closeHelp() {
+    const m = document.getElementById('helpModal');
+    if (m) { m.style.display = 'none'; document.body.style.overflow = ''; }
+}
+window.openHelp = openHelp;
+window.closeHelp = closeHelp;
+
 // ============================================================================
 // FULL BACKUP / RESTORE (one-click, timestamped)
 // ============================================================================
@@ -1155,7 +1174,7 @@ async function saveDataToGitHub(btn) {
         showToast('Please sign in with GitHub first', 'warning');
         return;
     }
-    const repoName = (document.getElementById('githubDataRepo')?.value || '').trim() || 'resume-engine-data';
+    const repoName = (document.getElementById('dataRepoName')?.value || document.getElementById('githubDataRepo')?.value || '').trim() || 'resume-engine-data';
     const access = document.querySelector('input[name="repoAccess"]:checked');
     const isPrivate = !access || access.value !== 'public';
     const orig = btn ? btn.innerHTML : '';
@@ -1193,7 +1212,7 @@ async function restoreDataFromGitHub(btn) {
         showToast('Please sign in with GitHub first', 'warning');
         return;
     }
-    const repoName = (document.getElementById('githubDataRepo')?.value || '').trim() || 'resume-engine-data';
+    const repoName = (document.getElementById('dataRepoName')?.value || document.getElementById('githubDataRepo')?.value || '').trim() || 'resume-engine-data';
     const orig = btn ? btn.innerHTML : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
     try {
@@ -2979,20 +2998,31 @@ async function fetchJDPlainText(url) {
 
 async function fetchJDFromURL() {
     const url = (document.getElementById('jdUrl')?.value || '').trim();
+    const note = document.getElementById('jdFetchNote');
+    const setNote = (html, kind) => {
+        if (!note) return;
+        note.style.display = 'block';
+        note.className = 'inline-note inline-note--' + (kind || 'info');
+        note.innerHTML = html;
+    };
     if (!url) {
         showToast('Please enter a job posting URL', 'warning');
+        setNote('Enter a job posting link above first.', 'warn');
         return;
     }
     showToast('Fetching job description...', 'info');
+    setNote('⏳ Fetching the job description…', 'info');
     try {
         const plain = await fetchJDPlainText(url);
         if (!plain) throw new Error('empty response');
         const jdArea = document.getElementById('jdText');
         if (jdArea) jdArea.value = plain.slice(0, 8000);
         showToast('Job description fetched. Review and edit as needed.', 'success');
+        setNote('✓ Fetched — review and edit the text below as needed.', 'ok');
     } catch (error) {
         console.error('JD fetch error:', error);
-        showToast('Could not fetch that link (the portal likely blocks it). Paste the JD text instead — the link is still saved to job-details.md.', 'error');
+        showToast('Could not fetch that link (the portal likely blocks it). Paste the JD text instead.', 'error');
+        setNote('⚠️ <strong>Couldn’t read that link</strong> — most job portals (LinkedIn, Indeed…) block automated fetching. Just <strong>paste the job description text</strong> into the box below. The link is still saved to <code>job-details.md</code> in your published repo.', 'warn');
     }
 }
 
@@ -3058,23 +3088,33 @@ function renderAISettings() {
     const oll = AIIntegration.getOllamaConfig();
     const ghCfg = (window.GitHubRunner && GitHubRunner.getConfig) ? GitHubRunner.getConfig() : { owner: 'rdammala', repo: 'resume-engine-pro', model: 'llama3.2' };
     const hasTok = !!(window.GitHubRunner && GitHubRunner.hasToken());
+    // Default the repo owner to the LOGGED-IN user (so the cloud job runs in
+    // THEIR account/fork) unless they have explicitly saved a different owner.
+    const ghUser = (window.GitHubManager && GitHubManager.getUsername && GitHubManager.getUsername()) || '';
+    const savedRunnerCfg = (window.StorageManager && StorageManager.get('ghRunnerConfig')) || {};
+    const ownerVal = savedRunnerCfg.owner || ghUser || ghCfg.owner;
+    const repoVal = savedRunnerCfg.repo || ghCfg.repo;
     const tokenScopeUrl = 'https://github.com/settings/tokens?type=beta';
+    const forkUrl = 'https://github.com/rdammala/resume-engine-pro/fork';
     html += `<div class="ai-provider-card ai-provider-card--wide">
         <h4>${escHtml(AIIntegration.providers.ollama.name)} ${hasTok ? '✅' : ''}</h4>
-        <p>Free &amp; automated — when you click <strong>Generate</strong>, the site triggers a GitHub Actions workflow that spins up a fresh cloud runner, installs Ollama, runs <strong>Llama 3</strong>, tailors your resume to the JD, commits the result, and <strong>self-destructs</strong>. No local server, $0 cost.</p>
-        <p style="font-size:0.85rem;opacity:0.85;">One-time setup: create a <a href="${tokenScopeUrl}" target="_blank" rel="noopener">fine-grained GitHub token</a> scoped to <code>${escHtml(ghCfg.owner)}/${escHtml(ghCfg.repo)}</code> with <strong>Actions: Read &amp; write</strong> and <strong>Contents: Read &amp; write</strong> (or a classic token with <code>repo</code> + <code>workflow</code>). It is stored only in your browser.</p>
+        <p>Free &amp; automated — when you click <strong>Generate</strong>, a GitHub Actions workflow spins up a fresh cloud runner, installs Ollama, runs <strong>Llama 3</strong>, tailors your resume to the JD, commits the result, and <strong>self-destructs</strong>. No local server, $0 cost.</p>
+        <p style="font-size:0.85rem;opacity:0.9;line-height:1.55;">One-time setup — the cloud generator runs in <strong>your own</strong> GitHub account:<br>
+        1️⃣ <a href="${forkUrl}" target="_blank" rel="noopener">Fork this repo</a> so the <code>ollama-resume.yml</code> workflow exists under your account.<br>
+        2️⃣ Create a <a href="${tokenScopeUrl}" target="_blank" rel="noopener">fine-grained GitHub token</a> with <strong>Resource owner = your account</strong>, <strong>Repository access = All repositories</strong>, then <strong>Permissions → Actions: Read &amp; write</strong> and <strong>Contents: Read &amp; write</strong>. (Choosing <em>All repositories</em> is what makes the Actions/Contents permissions appear; the token only affects repos owned by the resource owner you pick.)<br>
+        3️⃣ Paste the token below — it is stored only in your browser. <a href="#" onclick="openHelp();return false;"><strong>Full step-by-step guide →</strong></a></p>
         <div class="form-group">
             <label>GitHub Personal Access Token</label>
             <input type="password" id="ghPat" placeholder="${hasTok ? '•••••••• (saved — paste to replace)' : 'github_pat_… or ghp_…'}" />
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label>Repo owner</label>
-                <input type="text" id="ghOwner" placeholder="rdammala" value="${escHtml(ghCfg.owner)}" />
+                <label>Repo owner (your GitHub username)</label>
+                <input type="text" id="ghOwner" placeholder="${escHtml(ghUser || 'your-username')}" value="${escHtml(ownerVal)}" />
             </div>
             <div class="form-group">
-                <label>Repo name</label>
-                <input type="text" id="ghRepo" placeholder="resume-engine-pro" value="${escHtml(ghCfg.repo)}" />
+                <label>Repo name (your fork)</label>
+                <input type="text" id="ghRepo" placeholder="resume-engine-pro" value="${escHtml(repoVal)}" />
             </div>
         </div>
         <div class="form-group">

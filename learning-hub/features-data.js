@@ -277,6 +277,38 @@ function toggleAppTheme(){var h=document.documentElement,
   h.setAttribute('data-theme',t); localStorage.setItem('rep-app-theme',t); applyAppThemeIcon();}`,
         lesson: 'Theme by token, not by literal: routing every structural colour through CSS variables lets one design support light AND dark (and a live toggle) without forking the markup. Decide the theme synchronously before the first paint (inline script reading localStorage, falling back to prefers-color-scheme) to avoid a flash. Persist the choice so it sticks. And when retrofitting a light mode onto a dark-first app, the variables cover most of it — the real work is hunting the hard-coded accents (here, the cyan #00d9ff) that were only ever chosen to read on dark.',
         impact: 'Medium — softer default portfolios, visitors can read any published portfolio in their preferred light/dark mode, and the whole app can be switched to a light theme from the navbar.'
+    },
+    {
+        id: 9,
+        title: 'First-Run Onboarding — Getting-Started Steps, In-App Help/FAQ, a Floating Help Button, and Clearer GitHub-Token Guidance',
+        category: 'Onboarding / UX',
+        status: 'Shipped',
+        role: 'Front-End / UX',
+        effort: '150 min',
+        summary: 'After real users (via LinkedIn) found the tool confusing, added a Dashboard "Get set up in 3 steps" banner, a floating ? Help button on every page opening a full Help & FAQ (with a first-timer GitHub-token walkthrough), consistent AI-status wording, an inline "could not fetch the link" note, and fixed the GitHub setup so it targets the user account instead of the project owner — including a real bug where the Initialize Data Repository button read the wrong input field.',
+        motivation: 'Feedback: people did not know where to start (Quick Actions was buried at the bottom); AI-status badges were worded inconsistently (Ready / Not set / No key); the "could not fetch JD" toast was missed; the Settings tab scrolled out of view with no link back; the Ollama repo owner/token were hard-coded to the project owner (rdammala) instead of the user; and creating a data repo failed with an unhelpful "Failed to create repo:" message.',
+        solution: 'Dashboard now leads with a 3-step getting-started card (Create profile → Generate → Publish/track) and Quick Actions moved to the top. renderAIStatus() uses one pattern: "✓ Ready" when usable, else a precise action ("Add API key" / "Add GitHub token" / "Add endpoint"), and Ollama now reflects whether the token is actually set. The JD fetch writes a persistent inline note (not just a toast) explaining portals block fetching and to paste instead. A floating ? button (every page) opens a Help & FAQ modal with the basic flow, the "some resumes do not auto-fill" explanation, AI-engine guidance, and a step-by-step fine-grained-token guide (Resource owner = your account, Repository access = All repositories — which is what makes the Actions/Contents permissions appear). The Ollama card auto-fills Repo owner with the logged-in username and links to fork the repo; createDataRepository() now surfaces the real GitHub error + an actionable hint (401/403/422); and the Initialize/Save/Restore buttons now read the Settings #dataRepoName field they sit next to (they were wired to a different tab #githubDataRepo).',
+        codeExample: `// AI status: one consistent pattern, and Ollama tells the truth about its token.
+const statusOf = (id) => {
+  if (id === 'pollinations') return { ready: true,  label: '✓ Ready · free' };
+  if (id === 'ollama')       return hasGhToken
+        ? { ready: true,  label: '✓ Ready · free' }
+        : { ready: false, label: 'Add GitHub token' };
+  if (id === 'custom')       return AIIntegration.isConfigured('custom')
+        ? { ready: true, label: '✓ Ready' } : { ready: false, label: 'Add endpoint' };
+  return AIIntegration.isConfigured(id)
+        ? { ready: true, label: '✓ Ready' } : { ready: false, label: 'Add API key' };
+};
+
+// Bug: the Initialize button read a different tab's field. Read the one beside it.
+const repoName = (document.getElementById('dataRepoName')?.value
+              || document.getElementById('githubDataRepo')?.value || '').trim()
+              || 'resume-engine-data';
+
+// Repo owner now defaults to the signed-in user (their fork), not the project owner.
+const ownerVal = savedRunnerCfg.owner || GitHubManager.getUsername() || ghCfg.owner;`,
+        lesson: 'Watch real first-time users: experts skip the friction newcomers hit. Lead with the intended flow (do not bury the call-to-action), and word status consistently — "Ready vs Not set vs No key" reads as three different systems. A transient toast is easy to miss; mirror critical feedback inline next to the field. For a tool that rides on the user own GitHub, never hard-code your own account into defaults — auto-fill theirs — and turn cryptic API failures into the exact fix (scope, owner, name-taken). Finally, put first-timer setup (especially token scopes most people see for the first time) behind an always-reachable Help button, not just prose they have to find.',
+        impact: 'High — new users get an obvious path, ready-to-use clarity on AI engines, self-serve token/setup help, and a GitHub flow that actually creates repos in THEIR account; far less hand-holding needed to onboard.'
     }
 ];
 

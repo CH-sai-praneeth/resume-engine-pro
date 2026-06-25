@@ -118,7 +118,18 @@ const GitHubManager = {
             });
             
             if (!response.ok) {
-                throw new Error(`Failed to create repo: ${response.statusText}`);
+                // Surface the REAL GitHub message + an actionable hint so users
+                // (often creating a token for the first time) know what to fix.
+                let detail = '';
+                try {
+                    const err = await response.json();
+                    detail = err && (err.message || (err.errors && err.errors[0] && err.errors[0].message)) || '';
+                } catch (_) { detail = response.statusText; }
+                let hint = '';
+                if (response.status === 401) hint = 'Your token is missing or invalid — paste a valid token and sign in again.';
+                else if (response.status === 403) hint = 'Your token cannot create repos. Use a fine-grained token with Resource owner = your account, Repository access = All repositories, and Administration: Read & write (or a classic token with the "repo" scope).';
+                else if (response.status === 422) hint = 'A repository with that name already exists in your account, or the name is invalid — pick a different name.';
+                throw new Error(`Could not create the repository (HTTP ${response.status}). ${detail}${detail && hint ? ' — ' : ''}${hint}`.trim());
             }
             
             const repo = await response.json();

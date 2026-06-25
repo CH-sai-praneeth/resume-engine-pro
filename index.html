@@ -225,7 +225,46 @@
             <!-- Dashboard Tab -->
             <div id="dashboard" class="main-tab-content active">
                 <h2>Dashboard</h2>
+
+                <!-- Getting started: make the intended flow obvious up front -->
+                <div class="getting-started">
+                    <h3>👋 New here? Get set up in 3 steps</h3>
+                    <div class="gs-steps">
+                        <div class="gs-step">
+                            <span class="gs-num">1</span>
+                            <div class="gs-body">
+                                <strong>Create a profile</strong>
+                                <p>Upload your résumé (PDF/DOCX/TXT) or type your details once — reuse it for every job.</p>
+                                <button class="btn btn-primary" onclick="switchMainTab('profiles')">Create Profile</button>
+                            </div>
+                        </div>
+                        <div class="gs-step">
+                            <span class="gs-num">2</span>
+                            <div class="gs-body">
+                                <strong>Generate a résumé</strong>
+                                <p>Pick your profile, paste a job link or description, choose a free or paid AI engine.</p>
+                                <button class="btn btn-primary" onclick="switchMainTab('generator')">Generate</button>
+                            </div>
+                        </div>
+                        <div class="gs-step">
+                            <span class="gs-num">3</span>
+                            <div class="gs-body">
+                                <strong>Publish &amp; track</strong>
+                                <p>Publish a live portfolio and keep every application in the tracker.</p>
+                                <button class="btn btn-secondary" onclick="switchMainTab('applications')">Open Tracker</button>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="gs-help">First time using a GitHub token or the cloud generator? <a href="#" onclick="openHelp();return false;">Open Help &amp; FAQ</a> for step-by-step setup.</p>
+                </div>
+
                 <div class="dashboard-grid">
+                    <div class="dashboard-card">
+                        <h3>Quick Actions</h3>
+                        <button class="btn btn-primary" onclick="switchMainTab('profiles')">Add Profile</button>
+                        <button class="btn btn-primary" onclick="switchMainTab('generator')">Generate Resume</button>
+                    </div>
+
                     <div class="dashboard-card">
                         <h3>Statistics</h3>
                         <div class="stat-item">
@@ -257,12 +296,6 @@
                             <p>No AI providers configured yet.</p>
                             <button class="btn btn-secondary" onclick="switchMainTab('settings')">Set Up AI</button>
                         </div>
-                    </div>
-
-                    <div class="dashboard-card">
-                        <h3>Quick Actions</h3>
-                        <button class="btn btn-primary" onclick="switchMainTab('profiles')">Add Profile</button>
-                        <button class="btn btn-primary" onclick="switchMainTab('generator')">Generate Resume</button>
                     </div>
                 </div>
             </div>
@@ -418,6 +451,7 @@
                                     <input type="url" id="jdUrl" placeholder="https://www.linkedin.com/jobs/view/... or https://careers.company.com/job/..." oninput="this.title=this.value" title="" />
                                     <button class="btn btn-secondary" type="button" onclick="fetchJDFromURL()">Fetch description</button>
                                 </div>
+                                <div id="jdFetchNote" class="inline-note" style="display:none;"></div>
                             </div>
                             <div class="form-group">
                                 <label>Job Description <span class="optional">(optional — paste the full text for the best tailoring)</span></label>
@@ -772,10 +806,11 @@
                 <!-- GitHub Settings -->
                 <div class="settings-section">
                     <h3> GitHub Configuration</h3>
+                    <p style="color:var(--text-secondary); font-size:0.9rem;">Create a repository in <strong>your own</strong> GitHub account to back up your data and host published portfolios. It uses the token you signed in with — nothing is created in anyone else's account. <a href="#" onclick="openHelp();return false;">Need help? Open the Help &amp; FAQ →</a></p>
                     <div class="form-group">
                         <label>GitHub Data Repository Name:</label>
                         <input type="text" id="dataRepoName" placeholder="resume-engine-data" />
-                        <small>This repo will store all your resumes and profiles. Leave blank to use default name.</small>
+                        <small>A new repo with this name is created in your account. Leave blank to use <code>resume-engine-data</code>. If the name already exists, pick a different one.</small>
                     </div>
                     <div class="form-group">
                         <label>Repository Access:</label>
@@ -847,6 +882,74 @@
             <div id="quickSettings">
                 <!-- Will be populated by JavaScript -->
             </div>
+        </div>
+    </div>
+
+    <!-- Floating Help button (every page) + Help & FAQ modal -->
+    <button id="helpFab" class="help-fab" type="button" onclick="openHelp()" title="Help &amp; FAQ" aria-label="Open Help and FAQ">
+        <span class="help-fab-q">?</span><span class="help-fab-label">Help</span>
+    </button>
+
+    <div id="helpModal" class="help-modal" style="display:none;" onclick="if(event.target===this)closeHelp()">
+        <div class="help-modal-box">
+            <button class="help-modal-close" type="button" onclick="closeHelp()" aria-label="Close help">✕</button>
+            <h2>Help &amp; FAQ — Getting Started</h2>
+
+            <p class="help-lead">Everything runs in <strong>your browser</strong> using <strong>your own</strong> GitHub account. Your keys and data never touch our servers. Here's how to set up and use Resume Engine Pro.</p>
+
+            <h3>① The basic flow</h3>
+            <ol>
+                <li><strong>Create a profile</strong> (My Profiles) — upload your résumé or type your details once.</li>
+                <li><strong>Generate</strong> (Generate) — pick your profile, paste a job link or description, choose an AI engine.</li>
+                <li><strong>Publish &amp; track</strong> — publish a portfolio and log applications in the tracker.</li>
+            </ol>
+
+            <h3>② "Some résumés don't auto-fill"</h3>
+            <p>We auto-extract name, email, skills and experience from <strong>PDF, DOCX and TXT</strong>. Some files can't be read automatically — <strong>password-protected/secured PDFs, scanned images, or unusual layouts</strong>. When a field stays blank, just <strong>type it in manually</strong> (or use <em>Manual Entry</em>) — generation works the same either way.</p>
+
+            <h3>③ AI engines — which to pick</h3>
+            <ul>
+                <li><strong>Free AI (Pollinations)</strong> — works instantly, <strong>no key</strong>. Good for a quick start.</li>
+                <li><strong>Ollama / Llama 3 (cloud)</strong> — free, private, runs on a throwaway GitHub runner. Needs a <strong>fork + GitHub token</strong> (see ④).</li>
+                <li><strong>OpenAI / Claude / Gemini / Mistral</strong> — highest quality, <strong>use your own API key</strong> (billed by them).</li>
+                <li><strong>None</strong> — local keyword matching, no AI.</li>
+            </ul>
+
+            <h3>④ Create a GitHub token (first-timers, read this)</h3>
+            <p>A token lets the app act in <strong>your</strong> GitHub account (host portfolios, run the free cloud generator, back up data). It's stored only in your browser.</p>
+            <ol>
+                <li>Open <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">github.com → Settings → Developer settings → Fine-grained tokens</a> and click <strong>Generate new token</strong>.</li>
+                <li>Give it a <strong>name</strong> and an <strong>expiration</strong>.</li>
+                <li><strong>Resource owner:</strong> choose <strong>your own account</strong>. (Important: the token can <em>only</em> affect resources owned by the owner you pick here.)</li>
+                <li><strong>Repository access:</strong> choose <strong>All repositories</strong>. <em>This step is what makes the permission options below appear</em> — if you skip it you won't see Actions/Contents.</li>
+                <li>Under <strong>Permissions → Repository permissions</strong>, set:
+                    <ul>
+                        <li><strong>Actions</strong> → <strong>Read and write</strong></li>
+                        <li><strong>Contents</strong> → <strong>Read and write</strong></li>
+                        <li><strong>Administration</strong> → <strong>Read and write</strong> (only needed to <em>create</em> a new data repo)</li>
+                    </ul>
+                </li>
+                <li>Click <strong>Generate token</strong>, copy it (starts with <code>github_pat_</code>), and paste it into <strong>Settings → Ollama</strong> (and it's reused for publishing/backup).</li>
+            </ol>
+            <p class="help-tip">💡 Prefer a <strong>classic</strong> token? Create one with the <code>repo</code> + <code>workflow</code> scopes — that also works.</p>
+
+            <h3>⑤ Use the free cloud generator (Ollama) in YOUR account</h3>
+            <ol>
+                <li><a href="https://github.com/rdammala/resume-engine-pro/fork" target="_blank" rel="noopener">Fork this repo</a> to your account (so the <code>ollama-resume.yml</code> workflow exists under you).</li>
+                <li>In <strong>Settings → Ollama</strong>, set <strong>Repo owner = your username</strong> (auto-filled when signed in) and <strong>Repo name = resume-engine-pro</strong> (your fork), paste your token, and Save.</li>
+                <li>Pick <strong>Ollama</strong> on the Generate tab and click Generate — a free runner does the work and self-destructs.</li>
+            </ol>
+
+            <h3>⑥ Create a data repo / back up your data</h3>
+            <p>In <strong>Settings → GitHub Configuration</strong>, type a repo name, choose Private/Public, and click <strong>Initialize Data Repository</strong> — it's created in <strong>your</strong> account. Then under <strong>Data Backup &amp; Restore</strong> you can <strong>Download a backup</strong> or <strong>Save to GitHub</strong>, and restore on any device.</p>
+
+            <h3>⑦ "It couldn't fetch the job link"</h3>
+            <p>Most job portals (LinkedIn, Indeed…) block automated reading, so the <em>Fetch description</em> button may fail — that's expected. Just <strong>paste the job description text</strong>. The link itself is still saved to <code>job-details.md</code> in your published repo.</p>
+
+            <h3>⑧ Privacy</h3>
+            <p>There is <strong>no server</strong>. Profiles, history and keys live in your browser's local storage; published portfolios and backups go to <strong>your own</strong> GitHub. Use <strong>Settings → Data Backup</strong> before clearing browser data.</p>
+
+            <p class="help-foot">Still stuck? Re-open this anytime via the <strong>?</strong> button (bottom-right).</p>
         </div>
     </div>
 

@@ -2366,4 +2366,79 @@ html[data-theme="light"] .modal h3 {
 /* The navbar theme button should read on both themes */
 html[data-theme="light"] #themeToggleBtn { color: #1a2230; }
 
+/* ============================================================================
+   ONBOARDING: getting-started banner, inline notes, Help FAB + Help/FAQ modal
+   ============================================================================ */
+.getting-started {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--primary);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.getting-started h3 { color: var(--primary); margin-bottom: 1rem; }
+.gs-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.1rem; }
+.gs-step { display: flex; gap: 0.75rem; align-items: flex-start; }
+.gs-num {
+    flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--primary); color: #fff; display: inline-flex;
+    align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem;
+}
+.gs-body strong { display: block; margin-bottom: 0.25rem; color: var(--text-primary); }
+.gs-body p { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.6rem; line-height: 1.45; }
+.gs-help { margin-top: 1rem; font-size: 0.85rem; color: var(--text-secondary); }
+.getting-started a { color: var(--primary); }
+
+.inline-note {
+    margin-top: 0.6rem; padding: 0.6rem 0.8rem; border-radius: 6px;
+    font-size: 0.85rem; line-height: 1.5; border: 1px solid var(--border);
+}
+.inline-note code { background: rgba(127,127,127,0.18); padding: 0.1rem 0.35rem; border-radius: 3px; }
+.inline-note--info { background: rgba(0,153,255,0.08); border-color: rgba(0,153,255,0.3); }
+.inline-note--ok { background: rgba(0,224,138,0.08); border-color: rgba(0,224,138,0.3); }
+.inline-note--warn { background: rgba(255,170,0,0.10); border-color: rgba(255,170,0,0.35); }
+
+.help-fab {
+    position: fixed; right: 20px; bottom: 20px; z-index: 1200;
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    padding: 0.65rem 1rem 0.65rem 0.85rem; border: none; border-radius: 999px;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: #fff; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3); transition: transform 0.15s ease, filter 0.15s ease;
+}
+.help-fab:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.help-fab-q {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 1rem;
+}
+@media (max-width: 600px) { .help-fab-label { display: none; } .help-fab { padding: 0.7rem; } }
+
+.help-modal {
+    position: fixed; inset: 0; z-index: 1300; background: rgba(0,0,0,0.6);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 4vh 1rem; overflow: auto;
+}
+.help-modal-box {
+    position: relative; background: var(--card-bg); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 12px; max-width: 760px; width: 100%;
+    padding: 2rem 2rem 2.5rem; box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+}
+.help-modal-box h2 { color: var(--primary); margin-bottom: 0.75rem; }
+.help-modal-box h3 { color: var(--secondary); margin: 1.5rem 0 0.5rem; font-size: 1.05rem; }
+.help-modal-box p, .help-modal-box li { color: var(--text-secondary); line-height: 1.6; font-size: 0.92rem; }
+.help-modal-box ol, .help-modal-box ul { padding-left: 1.4rem; margin: 0.4rem 0; }
+.help-modal-box li { margin-bottom: 0.35rem; }
+.help-modal-box a { color: var(--primary); }
+.help-modal-box code { background: rgba(127,127,127,0.18); padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+.help-lead { background: rgba(0,224,138,0.08); border: 1px solid rgba(0,224,138,0.25); border-radius: 8px; padding: 0.75rem 0.9rem; }
+.help-tip { background: rgba(0,153,255,0.08); border: 1px solid rgba(0,153,255,0.25); border-radius: 8px; padding: 0.6rem 0.8rem; }
+.help-foot { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.help-modal-close {
+    position: absolute; top: 0.75rem; right: 0.75rem; background: none;
+    border: 1px solid var(--border); color: var(--text-primary);
+    width: 32px; height: 32px; border-radius: 8px; cursor: pointer;
+}
+.help-modal-close:hover { color: var(--primary); border-color: var(--primary); }
+
 

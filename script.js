@@ -3100,9 +3100,9 @@ function renderAISettings() {
         <h4>${escHtml(AIIntegration.providers.ollama.name)} ${hasTok ? '✅' : ''}</h4>
         <p>Free &amp; automated — when you click <strong>Generate</strong>, a GitHub Actions workflow spins up a fresh cloud runner, installs Ollama, runs <strong>Llama 3</strong>, tailors your resume to the JD, commits the result, and <strong>self-destructs</strong>. No local server, $0 cost.</p>
         <p style="font-size:0.85rem;opacity:0.9;line-height:1.55;">One-time setup — the cloud generator runs in <strong>your own</strong> GitHub account:<br>
-        1️⃣ <a href="${forkUrl}" target="_blank" rel="noopener">Fork this repo</a> so the <code>ollama-resume.yml</code> workflow exists under your account.<br>
-        2️⃣ Create a <a href="${tokenScopeUrl}" target="_blank" rel="noopener">fine-grained GitHub token</a> with <strong>Resource owner = your account</strong>, <strong>Repository access = All repositories</strong>, then <strong>Permissions → Actions: Read &amp; write</strong> and <strong>Contents: Read &amp; write</strong>. (Choosing <em>All repositories</em> is what makes the Actions/Contents permissions appear; the token only affects repos owned by the resource owner you pick.)<br>
-        3️⃣ Paste the token below — it is stored only in your browser. <a href="#" onclick="openHelp();return false;"><strong>Full step-by-step guide →</strong></a></p>
+        1️⃣ Create a <a href="${tokenScopeUrl}" target="_blank" rel="noopener">fine-grained GitHub token</a> with <strong>Resource owner = your account</strong>, <strong>Repository access = All repositories</strong>, then <strong>Permissions → Actions: Read &amp; write</strong> and <strong>Contents: Read &amp; write</strong>. (Choosing <em>All repositories</em> is what makes the Actions/Contents permissions appear; the token only affects repos owned by the resource owner you pick.)<br>
+        2️⃣ Paste the token below and click <strong>⚡ Auto-create my cloud generator</strong> — it forks the repo into <strong>your</strong> account and points everything at it (or <a href="${forkUrl}" target="_blank" rel="noopener">fork manually</a> and fill the fields yourself).<br>
+        3️⃣ Everything is stored only in your browser. <a href="#" onclick="openHelp();return false;"><strong>Full step-by-step guide with screenshots →</strong></a></p>
         <div class="form-group">
             <label>GitHub Personal Access Token</label>
             <input type="password" id="ghPat" placeholder="${hasTok ? '•••••••• (saved — paste to replace)' : 'github_pat_… or ghp_…'}" />
@@ -3121,6 +3121,7 @@ function renderAISettings() {
             <label>Model — recommended <code>llama3.2</code> (3B, fast &amp; reliable on the free CPU runner)</label>
             <input type="text" id="ollamaModel" placeholder="llama3.2" value="${escHtml((oll.model === 'llama3' ? 'llama3.2' : (oll.model || ghCfg.model)))}" />
         </div>
+        <button class="btn btn-primary" onclick="setupCloudFork(this)">⚡ Auto-create my cloud generator</button>
         <button class="btn btn-secondary" onclick="saveOllamaCloudConfig()">Save Ollama Cloud Settings</button>
         ${hasTok ? '<button class="btn btn-secondary" onclick="clearOllamaToken()">Remove Token</button>' : ''}
         <small>💸 This repo is <strong>public</strong>, so GitHub Actions minutes are <strong>unlimited &amp; free ($0)</strong>. The runner is temporary and shuts itself down when the job finishes (15-min max) — nothing keeps running, nothing is billed. Requires the <code>ollama-resume.yml</code> workflow (already included). Avoid <code>llama3</code> (8B) — it can run out of memory mid-generation on the free runner; stick with <code>llama3.2</code>.</small>
@@ -3207,6 +3208,48 @@ function clearOllamaToken() {
     showToast('GitHub token removed', 'info');
     renderAISettings();
 }
+
+// One-click: fork the template repo into the user's own account and point the
+// cloud generator at THEIR fork. Runs entirely on the user's token/account —
+// never touches the project owner's repo or Actions quota.
+async function setupCloudFork(btn) {
+    if (!window.GitHubRunner) { showToast('GitHub runner module not loaded', 'error'); return; }
+    // Allow setting up straight from a freshly-pasted token (before Save).
+    const pat = document.getElementById('ghPat')?.value.trim();
+    if (pat) GitHubRunner.setToken(pat);
+    if (!GitHubRunner.hasToken()) {
+        showToast('Paste your GitHub token above first, then click this', 'warning');
+        return;
+    }
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Setting up…'; }
+    try {
+        const user = await GitHubRunner.whoAmI();
+        const fork = await GitHubRunner.forkSource();
+        const owner = (fork && fork.owner && fork.owner.login) || user;
+        const repo = (fork && fork.name) || 'resume-engine-pro';
+        // Forked repos start with Actions disabled — best-effort enable.
+        const actionsOn = await GitHubRunner.enableActions(owner, repo);
+        GitHubRunner.setConfig({ owner, repo });
+        // Reflect in the visible fields immediately.
+        const ownerEl = document.getElementById('ghOwner'); if (ownerEl) ownerEl.value = owner;
+        const repoEl = document.getElementById('ghRepo'); if (repoEl) repoEl.value = repo;
+        const actionsUrl = `https://github.com/${owner}/${repo}/actions`;
+        if (actionsOn) {
+            showToast(`✅ Ready! Your cloud generator is set up at ${owner}/${repo}.`, 'success');
+        } else {
+            showToast(`Forked to ${owner}/${repo}. One last step: enable Actions on the fork (open its Actions tab).`, 'warning');
+            try { window.open(actionsUrl, '_blank', 'noopener'); } catch (_) {}
+        }
+        renderAISettings();
+    } catch (e) {
+        console.error('setupCloudFork failed:', e);
+        showToast('Could not set up the fork: ' + e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig || '⚡ Auto-create my cloud generator'; }
+    }
+}
+window.setupCloudFork = setupCloudFork;
 
 }
 

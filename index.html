@@ -916,29 +916,38 @@
             </ul>
 
             <h3>④ Create a GitHub token (first-timers, read this)</h3>
-            <p>A token lets the app act in <strong>your</strong> GitHub account (host portfolios, run the free cloud generator, back up data). It's stored only in your browser.</p>
+            <p>A token lets the app act in <strong>your</strong> GitHub account (host portfolios, run the free cloud generator, back up data). It's stored only in your browser. The screenshots below show each step.</p>
             <ol>
-                <li>Open <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">github.com → Settings → Developer settings → Fine-grained tokens</a> and click <strong>Generate new token</strong>.</li>
-                <li>Give it a <strong>name</strong> and an <strong>expiration</strong>.</li>
-                <li><strong>Resource owner:</strong> choose <strong>your own account</strong>. (Important: the token can <em>only</em> affect resources owned by the owner you pick here.)</li>
-                <li><strong>Repository access:</strong> choose <strong>All repositories</strong>. <em>This step is what makes the permission options below appear</em> — if you skip it you won't see Actions/Contents.</li>
-                <li>Under <strong>Permissions → Repository permissions</strong>, set:
-                    <ul>
-                        <li><strong>Actions</strong> → <strong>Read and write</strong></li>
-                        <li><strong>Contents</strong> → <strong>Read and write</strong></li>
-                        <li><strong>Administration</strong> → <strong>Read and write</strong> (only needed to <em>create</em> a new data repo)</li>
-                    </ul>
+                <li>Go to <a href="https://github.com/settings/profile" target="_blank" rel="noopener">github.com → Settings</a> and open <strong>Developer settings</strong> (bottom of the left menu).
+                    <img class="help-shot" src="assets/help/token-1.png" alt="GitHub Settings → Developer settings" onerror="this.style.display='none'">
                 </li>
-                <li>Click <strong>Generate token</strong>, copy it (starts with <code>github_pat_</code>), and paste it into <strong>Settings → Ollama</strong> (and it's reused for publishing/backup).</li>
+                <li>Open <strong>Personal access tokens → Fine-grained tokens</strong>, then click <strong>Generate new token</strong>.
+                    <img class="help-shot" src="assets/help/token-2.png" alt="Fine-grained tokens → Generate new token" onerror="this.style.display='none'">
+                </li>
+                <li>Fill in <strong>Token name</strong> and an optional <strong>Description</strong>. Set <strong>Resource owner = your own account</strong> (the token can <em>only</em> affect resources owned by the owner you pick), choose an <strong>Expiration</strong>, and under <strong>Repository access</strong> select the <strong>All repositories</strong> radio. <em>Selecting “All repositories” is what makes the Permissions appear below.</em>
+                    <img class="help-shot" src="assets/help/token-3.png" alt="Token name, resource owner, expiration, All repositories" onerror="this.style.display='none'">
+                </li>
+                <li>Under <strong>Permissions → Repository permissions</strong>, set <strong>Actions → Read and write</strong> and <strong>Contents → Read and write</strong>. (<strong>Metadata</strong> is automatically <strong>Read-only</strong> and mandatory — that's a GitHub requirement, leave it as-is. Add <strong>Administration → Read and write</strong> only if you also want the app to <em>create</em> a data repo.)
+                    <img class="help-shot" src="assets/help/token-4.png" alt="Actions and Contents set to Read and write; Metadata read-only" onerror="this.style.display='none'">
+                </li>
+                <li>Click <strong>Generate token</strong> and confirm in the dialog.
+                    <img class="help-shot" src="assets/help/token-5.png" alt="Generate token confirmation dialog" onerror="this.style.display='none'">
+                </li>
+                <li><strong>Copy the token now</strong> (it starts with <code>github_pat_</code>) — GitHub <strong>only shows it once</strong>. Paste it into <strong>Settings → Ollama</strong> in this app.
+                    <img class="help-shot" src="assets/help/token-6.png" alt="Copy your new token — shown only once" onerror="this.style.display='none'">
+                </li>
             </ol>
-            <p class="help-tip">💡 Prefer a <strong>classic</strong> token? Create one with the <code>repo</code> + <code>workflow</code> scopes — that also works.</p>
+            <p class="help-tip">⚠️ <strong>Save the token somewhere safe if you want to reuse it</strong> (e.g. a password manager). If you lose it you can't view it again — you'd just <strong>create a new token</strong> (or regenerate). It's fine to have a couple of tokens, but delete any you no longer use to keep your account tidy and secure.</p>
+            <p class="help-tip">💡 Prefer a <strong>classic</strong> token instead? Create one with the <code>repo</code> + <code>workflow</code> scopes — that also works.</p>
 
             <h3>⑤ Use the free cloud generator (Ollama) in YOUR account</h3>
+            <p>The free Ollama generator runs in <strong>your own</strong> GitHub account, so it never uses anyone else's resources. You need your own copy of the project (the workflow file). Easiest way:</p>
             <ol>
-                <li><a href="https://github.com/rdammala/resume-engine-pro/fork" target="_blank" rel="noopener">Fork this repo</a> to your account (so the <code>ollama-resume.yml</code> workflow exists under you).</li>
-                <li>In <strong>Settings → Ollama</strong>, set <strong>Repo owner = your username</strong> (auto-filled when signed in) and <strong>Repo name = resume-engine-pro</strong> (your fork), paste your token, and Save.</li>
-                <li>Pick <strong>Ollama</strong> on the Generate tab and click Generate — a free runner does the work and self-destructs.</li>
+                <li>In <strong>Settings → Ollama</strong>, paste your token and click <strong>⚡ Auto-create my cloud generator</strong>. This <strong>forks</strong> the project into your account and fills in your owner/repo automatically.</li>
+                <li>Pick <strong>Ollama</strong> on the Generate tab and click Generate — a free, throwaway runner does the work and shuts itself down.</li>
             </ol>
+            <p class="help-tip">🔱 <strong>“Fork” vs “clone”:</strong> a <strong>fork</strong> is a copy of the repo <em>inside your GitHub account</em> — it includes the workflow and can run Actions, which is what the cloud generator needs. A <strong>clone</strong> is only a copy on your local computer and <em>can't</em> run the cloud job. So use <strong>Fork</strong> (the Auto-create button does this for you), not a local clone.</p>
+            <p class="help-tip">💰 <strong>No quota worries:</strong> the fork lives in <em>your</em> account and runs on <em>your</em> Actions minutes, which are <strong>free &amp; unlimited for public repos</strong>. It never touches the original project's quota. You can keep the fork (it's free and ready for next time) or delete it whenever you like — your published portfolios live in their own separate repos and stay online either way.</p>
 
             <h3>⑥ Create a data repo / back up your data</h3>
             <p>In <strong>Settings → GitHub Configuration</strong>, type a repo name, choose Private/Public, and click <strong>Initialize Data Repository</strong> — it's created in <strong>your</strong> account. Then under <strong>Data Backup &amp; Restore</strong> you can <strong>Download a backup</strong> or <strong>Save to GitHub</strong>, and restore on any device.</p>

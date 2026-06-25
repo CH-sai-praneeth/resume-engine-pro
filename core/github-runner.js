@@ -301,7 +301,50 @@ const GitHubRunner = {
         }
     },
 
-    _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+    _sleep(ms) { return new Promise(r => setTimeout(r, ms)); },
+
+    // ----- one-click "set up my own cloud generator" (fork) -----
+    // The free Ollama pipeline needs the ollama-resume.yml workflow to live in a
+    // repo the user can dispatch — i.e. a fork in THEIR account. These helpers
+    // fork the template repo and enable Actions on the fork using the user's own
+    // token, so nothing runs in (or bills) the project owner's account.
+    SOURCE: { owner: 'rdammala', repo: 'resume-engine-pro' },
+
+    async whoAmI() {
+        const res = await this.api('/user');
+        if (!res.ok) throw new Error(`Could not read your GitHub account (HTTP ${res.status}). ${this._hint(res.status)}`.trim());
+        const j = await res.json();
+        return j.login;
+    },
+
+    // Fork rdammala/resume-engine-pro into the token owner's account (idempotent:
+    // GitHub returns the existing fork if it already exists).
+    async forkSource() {
+        const res = await this.api(`/repos/${this.SOURCE.owner}/${this.SOURCE.repo}/forks`, {
+            method: 'POST',
+            body: JSON.stringify({ default_branch_only: true })
+        });
+        if (!(res.ok || res.status === 202)) {
+            const t = await res.text().catch(() => '');
+            throw new Error(`Could not fork the repo (HTTP ${res.status}). ${this._hint(res.status)} ${t.slice(0, 160)}`.trim());
+        }
+        return await res.json().catch(() => ({}));
+    },
+
+    // Best-effort: forked repos have Actions disabled by default; turn them on so
+    // the workflow can run. Needs Administration write — may fail on minimal
+    // tokens, in which case the user enables it once via the repo's Actions tab.
+    async enableActions(owner, name) {
+        try {
+            const res = await this.api(`/repos/${owner}/${name}/actions/permissions`, {
+                method: 'PUT',
+                body: JSON.stringify({ enabled: true, allowed_actions: 'all' })
+            });
+            return res.ok;
+        } catch (_) {
+            return false;
+        }
+    }
 };
 
 window.GitHubRunner = GitHubRunner;

@@ -309,6 +309,33 @@ const repoName = (document.getElementById('dataRepoName')?.value
 const ownerVal = savedRunnerCfg.owner || GitHubManager.getUsername() || ghCfg.owner;`,
         lesson: 'Watch real first-time users: experts skip the friction newcomers hit. Lead with the intended flow (do not bury the call-to-action), and word status consistently — "Ready vs Not set vs No key" reads as three different systems. A transient toast is easy to miss; mirror critical feedback inline next to the field. For a tool that rides on the user own GitHub, never hard-code your own account into defaults — auto-fill theirs — and turn cryptic API failures into the exact fix (scope, owner, name-taken). Finally, put first-timer setup (especially token scopes most people see for the first time) behind an always-reachable Help button, not just prose they have to find.',
         impact: 'High — new users get an obvious path, ready-to-use clarity on AI engines, self-serve token/setup help, and a GitHub flow that actually creates repos in THEIR account; far less hand-holding needed to onboard.'
+    },
+    {
+        id: 10,
+        title: 'One-Click "Auto-Create My Cloud Generator" (Fork) + Screenshot Token Walkthrough',
+        category: 'Onboarding / GitHub',
+        status: 'Shipped',
+        role: 'Front-End / GitHub',
+        effort: '70 min',
+        summary: 'The free Ollama cloud generator needs the workflow to live in a repo the user can dispatch — i.e. their own fork. Added a one-click button that forks the project into the user account with their token, enables Actions, and points the app at their fork. The Help/FAQ now has a 6-step, screenshot-illustrated GitHub-token guide, a fork-vs-clone explainer, and a clear "this never touches the owner quota" note.',
+        motivation: 'Users were confused about how to run the free generator under their own account, worried that forks might consume the project owner Actions quota, and asked whether they could just clone the repo. The manual fork + field-filling was friction, and the token steps were the first time many had seen GitHub fine-grained tokens.',
+        solution: 'GitHubRunner gained whoAmI(), forkSource() (POST /repos/OWNER/REPO/forks, idempotent) and a best-effort enableActions() (forks start with Actions disabled). A new setupCloudFork() handler forks with the user token, auto-fills their owner/repo, enables Actions, and saves the config — falling back to opening the fork Actions tab if enabling needs a broader scope. The FAQ embeds the real token screenshots (assets/help/token-1..6.png, hidden gracefully until present) with exact field values (Resource owner = your account, All repositories radio reveals Permissions, Actions + Contents = Read and write, Metadata is mandatory read-only), a copy-it-now-you-cannot-see-it-again warning, and a fork-vs-clone + free-quota explainer.',
+        codeExample: `// Fork the template into the user's own account (idempotent), then enable Actions.
+async forkSource() {
+  const res = await this.api('/repos/' + this.SOURCE.owner + '/' + this.SOURCE.repo + '/forks',
+                             { method: 'POST', body: JSON.stringify({ default_branch_only: true }) });
+  if (!(res.ok || res.status === 202)) throw new Error('Fork failed (HTTP ' + res.status + ')');
+  return await res.json();   // { owner: { login }, name, ... }
+}
+
+async function setupCloudFork(btn) {
+  const fork  = await GitHubRunner.forkSource();
+  const owner = fork.owner.login, repo = fork.name;
+  await GitHubRunner.enableActions(owner, repo);   // forks start disabled
+  GitHubRunner.setConfig({ owner, repo });          // point the app at THEIR fork
+}`,
+        lesson: 'When a feature requires the user to have their own copy of a repo, do the fork FOR them with their token instead of writing instructions — and reassure on the scary part: a fork runs on the user own free Actions minutes (unlimited for public repos) and can never touch the original owner quota, so there is nothing to clean up. Clarify fork (a repo in their account that can run Actions) vs clone (a local-only copy that cannot). And for first-time GitHub steps, real screenshots beat prose: embed them with an onerror fallback so the page still works before the images are added.',
+        impact: 'High — users can stand up the free cloud generator in their own account with one click (no manual fork, no quota fear), and the illustrated token guide removes the biggest first-run blocker.'
     }
 ];
 

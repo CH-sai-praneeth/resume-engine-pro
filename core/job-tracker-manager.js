@@ -6,19 +6,12 @@ const JobTrackerManager = {
     CONTACT_KEY: 'resumeEngineProV1_contacts',
     META_KEY: 'resumeEngineProV1_tracker_meta',
     
-    // Default applications (from your existing tracker)
-    defaultApps: [
-        { id:1, portfolio:'RD-Profile', role:'Technical Support Director', company:'Boulevard', date:'2026-06-10', link:'https://rdammala.github.io/RD-Profile/', repo:'https://github.com/rdammala/RD-Profile', status:'Applied', comments:'' },
-        { id:2, portfolio:'Senior-Incident-Manager', role:'Senior Incident Manager', company:'Amazon Prime Video', date:'2026-06-11', link:'https://rdammala.github.io/Senior-Incident-Manager/', repo:'https://github.com/rdammala/Senior-Incident-Manager', status:'Applied', comments:'' },
-        { id:3, portfolio:'Staff-Escalation-Manager', role:'Staff Escalation Manager', company:'Snowflake', date:'2026-06-12', link:'https://rdammala.github.io/Staff-Escalation-Manager/', repo:'https://github.com/rdammala/Staff-Escalation-Manager', status:'Applied', comments:'' },
-        { id:4, portfolio:'Technical-Lead-Deployment-Operations', role:'Technical Lead, Deployment Operations', company:'OpenAI', date:'2026-06-13', link:'https://rdammala.github.io/Technical-Lead-Deployment-Operations/', repo:'https://github.com/rdammala/Technical-Lead-Deployment-Operations', status:'Applied', comments:'' },
-        { id:5, portfolio:'Manager-Cloud-Support', role:'Manager, Cloud Support Engineering', company:'Cox Enterprises / RapidScale', date:'2026-06-14', link:'https://rdammala.github.io/Manager-Cloud-Support/', repo:'https://github.com/rdammala/Manager-Cloud-Support', status:'Denied', comments:'Application denied due to no visa sponsorship; candidate on H1B.' },
-        { id:6, portfolio:'Senior-Manager-SRE', role:'Senior Manager, Site Reliability Engineering', company:'NVIDIA', date:'2026-06-14', link:'https://rdammala.github.io/Senior-Manager-SRE/', repo:'https://github.com/rdammala/Senior-Manager-SRE', status:'Applied', comments:'' }
-    ],
+    // Default applications: intentionally EMPTY so visitors to the public app
+    // start with a blank Job Application Tracker (these used to seed every
+    // visitor with the owner's real applications). Users add their own rows.
+    defaultApps: [],
     
-    genericResumes: [
-        { name: 'RD-Profile', desc: 'Technical Support Director', url: 'https://rdammala.github.io/RD-Profile/', icon: '🏗️' }
-    ],
+    genericResumes: [],
     
     // ========================================================================
     // LOAD & SAVE
@@ -31,13 +24,22 @@ const JobTrackerManager = {
             this.saveApplications(apps);
             return apps;
         }
-        
-        // Merge new default apps with stored ones
-        const byPortfolio = new Map(stored.map(a => [a.portfolio, a]));
+
+        // One-time purge: anyone who loaded an earlier build had the owner's six
+        // sample applications saved into their browser. Strip those legacy seed
+        // rows once so they no longer appear for visitors (or the owner).
+        let working = stored;
+        if (!StorageManager.get('seedAppsCleared', false)) {
+            working = stored.filter(a => !this._isLegacySeed(a));
+            StorageManager.set('seedAppsCleared', true);
+        }
+
+        // Merge new default apps with stored ones (defaultApps is now empty)
+        const byPortfolio = new Map(working.map(a => [a.portfolio, a]));
         this.defaultApps.forEach(d => {
             const existing = byPortfolio.get(d.portfolio);
             if (!existing) {
-                stored.push(d);
+                working.push(d);
             } else if (!existing.repo && d.repo) {
                 // Backfill repo link onto previously stored default entries
                 existing.repo = d.repo;
@@ -47,9 +49,19 @@ const JobTrackerManager = {
         // Collapse rows that point at the same package (same repo, or same live
         // link). Re-publishing the same entry on the old build created identical
         // duplicate rows; this cleans them up the next time the tracker loads.
-        const deduped = this.dedupeByRepo(stored);
+        const deduped = this.dedupeByRepo(working);
         this.saveApplications(deduped);
         return deduped;
+    },
+
+    // Identify the legacy sample applications that used to ship as defaults, so
+    // they can be purged once from browsers that loaded an earlier build.
+    _isLegacySeed(a) {
+        if (!a) return false;
+        const port = String(a.portfolio || '');
+        const repo = String(a.repo || '');
+        const seeds = ['RD-Profile', 'Senior-Incident-Manager', 'Staff-Escalation-Manager', 'Technical-Lead-Deployment-Operations', 'Manager-Cloud-Support', 'Senior-Manager-SRE'];
+        return seeds.some(s => port === s || repo === 'https://github.com/rdammala/' + s);
     },
 
     // Keep the first occurrence of each repo/live-link; drop later duplicates.

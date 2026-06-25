@@ -196,36 +196,31 @@ function readBulkJobs() {
     },
     {
         id: 6,
-        title: 'Five Distinct Portfolio Templates + Output HTML-Escaping',
+        title: 'Distinct Portfolio Templates + Per-Profile Colour Palettes + Output Escaping',
         category: 'Portfolio',
         status: 'Shipped',
         role: 'Front-End / Security',
-        effort: '70 min',
-        summary: 'The portfolio template picker is real again: Minimalist, Executive, Creative, Tech and Startup are now genuinely different designs (layout, fonts, colour systems), and every value is HTML-escaped so a published, public portfolio can never be broken or injected by unusual resume content.',
+        effort: '95 min',
+        summary: 'The portfolio picker is real again: Minimalist, Executive, Creative, Tech and Startup are now genuinely different designs, each with 5 colour palettes (25 distinct looks). Each resume profile is auto-assigned a stable palette (so every person gets a different-looking site, consistently), and every value is HTML-escaped so a public portfolio can never be broken or injected by unusual resume content.',
         motivation: 'A QA pass found all five "templates" just called generateMinimalist — so the picker had no visual effect — and the templates interpolated profile fields raw, so a name/summary containing < or " could break the page or inject markup into a public GitHub Pages site.',
-        solution: 'Added a shared _prep() that escapes the whole profile once into a safe view model, a _body() that renders the About/Experience/Skills/Education sections with consistent class names (so content is identical across templates), and a _doc() wrapper. Each template now supplies its own emoji, <style> and palette while reusing that escaped body — guaranteeing content parity with distinct visuals. Multi-line summaries and experience bullets keep their line breaks via <br>.',
-        codeExample: `// Escape every profile value ONCE into a safe view model.
-_prep(profile) {
-  const p = profile || {};
-  return {
-    name: this._esc(p.name || p.displayName || 'Your Name'),
-    summary: p.summary ? this._escMulti(p.summary) : '',
-    skills: (Array.isArray(p.skills) ? p.skills : []).map(s => this._esc(s)),
-    education: (Array.isArray(p.education) ? p.education : []).map(e =>
-      typeof e === 'string' ? this._esc(e)
-        : this._esc([e.degree, e.school, e.year].filter(Boolean).join(', '))),
-    /* …experience, contacts… */
-  };
+        solution: 'Added a shared _prep() that escapes the whole profile once into a safe view model, a _body() that renders the About/Experience/Skills/Education sections with consistent class names (so content is identical across templates), and a _doc() wrapper. Each template defines 5 colour palettes and pulls colours from the one chosen by _schemeIndex(): a numeric scheme is honoured, while "auto" (passed by the generator) derives a STABLE palette from a hash of the profile name+title, so each person gets a consistent-but-varied look across re-generations. Multi-line summaries and experience bullets keep their line breaks via <br>.',
+        codeExample: `// Stable, per-profile palette selection (auto) — same person, same colours.
+_schemeIndex(profile, scheme, count) {
+  if (typeof scheme === 'number' && isFinite(scheme))
+    return ((Math.floor(scheme) % count) + count) % count;
+  const s = (profile.name || profile.displayName || '') + '|' + (profile.title || '');
+  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % count;                       // deterministic bucket -> stable colours
 }
 
-// Shared body → identical content; each template only changes the CSS.
-generateTech(profile) {
-  const d = this._prep(profile);
-  const css = '/* dark terminal: monospace, green-on-black, > headings */';
-  return this._doc(d, '💻', css);   // vs Executive serif+navy, Creative gradient…
+generateStartup(profile, scheme) {
+  const d = this._prep(profile);          // escaped view model
+  const pals = [/* indigo */, /* emerald */, /* rose */, /* sky */, /* amber */];
+  const c = pals[this._schemeIndex(profile, scheme, pals.length)];
+  return this._doc(d, '🚀', '/* CSS using ' + c.a + '/' + c.b + ' gradient */');
 }`,
-        lesson: 'A picker with no effect is worse than no picker — it implies a choice that does not exist. Separate content from presentation: escape and assemble the content once, then let each theme vary only the CSS, so adding a template can never drop a field or reopen an injection hole. Treat any user text rendered into a published, public page as untrusted and escape it at the boundary, even when it is "your own" resume data.',
-        impact: 'Medium — the five templates now look distinctly different, and every published portfolio is safe from broken layout or HTML/script injection regardless of resume content.'
+        lesson: 'A picker with no effect is worse than no picker. Separate content from presentation: escape and assemble the content once, then let each theme — and each palette — vary only the CSS, so adding a template or colourway can never drop a field or reopen an injection hole. Derive per-entity variation from a stable hash (not randomness) so the same profile always renders identically, keeping re-generated and re-published sites consistent. And treat any user text rendered into a public page as untrusted, escaping it at the boundary even when it is "your own" data.',
+        impact: 'Medium — five templates x five palettes give 25 distinct looks, every profile auto-gets its own stable colour scheme, and every published portfolio is safe from broken layout or HTML/script injection.'
     }
 ];
 

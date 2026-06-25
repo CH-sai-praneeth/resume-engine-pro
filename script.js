@@ -1869,7 +1869,7 @@ async function buildDocumentsFromProfile(workingProfile, jdText, baseName, opts,
     }
     if (opts.wantPortfolio && window.PortfolioTemplates) {
         try {
-            const html = PortfolioTemplates.generatePortfolio(normalizeProfile(workingProfile), opts.template || 'minimalist', 0);
+            const html = PortfolioTemplates.generatePortfolio(normalizeProfile(workingProfile), opts.template || 'minimalist', 'auto');
             addDownloadLink(downloadLinks, new Blob([html], { type: 'text/html' }), `${baseName}_Portfolio.html`, 'Portfolio (HTML)');
             count++;
         } catch (e) {
@@ -2063,7 +2063,7 @@ async function buildPublishFiles(workingProfile, jdText, opts, baseName) {
     // Portfolio is committed as index.html so GitHub Pages serves it at the root.
     if (opts.wantPortfolio && window.PortfolioTemplates) {
         try {
-            const html = PortfolioTemplates.generatePortfolio(normalizeProfile(workingProfile), opts.template || 'minimalist', 0);
+            const html = PortfolioTemplates.generatePortfolio(normalizeProfile(workingProfile), opts.template || 'minimalist', 'auto');
             if (html) files['index.html'] = new Blob([html], { type: 'text/html' });
         } catch (_) { /* portfolio optional */ }
     }

@@ -222,6 +222,11 @@ function switchMainTab(tabName) {
             populateProfileSelects();
         }
 
+        // Fill the Portfolio Template picker with the 25 named styles
+        if (tabName === 'generator' && typeof populatePortfolioTemplates === 'function') {
+            populatePortfolioTemplates();
+        }
+
         // Render AI provider settings (keys + custom provider) when entering Settings
         if (tabName === 'settings' && typeof renderAISettings === 'function') {
             renderAISettings();
@@ -694,6 +699,44 @@ async function setupGitHubDataRepo() {
         alert('Error: ' + error.message);
     }
 }
+
+// Wired to the "Initialize Data Repository" button. Reads the repo name and the
+// Private/Public radio, then creates the data repo with the chosen visibility.
+// (The button previously called a non-existent function and the radio value was
+// never read, so this whole section did nothing.)
+async function initializeGithubRepo(btn) {
+    if (!(window.GitHubManager && GitHubManager.isAuthenticated && GitHubManager.isAuthenticated())) {
+        showToast('Please sign in with GitHub first', 'warning');
+        return;
+    }
+    const repoName = (document.getElementById('githubDataRepo')?.value || '').trim() || 'resume-engine-data';
+    const access = document.querySelector('input[name="repoAccess"]:checked');
+    const isPrivate = !access || access.value !== 'public';
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
+    try {
+        const result = await GitHubManager.createDataRepository(repoName, isPrivate);
+        if (!result || result.success === false) {
+            throw new Error((result && result.error) || 'Could not create the repository');
+        }
+        if (GitHubManager.initializeFolderStructure) {
+            try { await GitHubManager.initializeFolderStructure(repoName); } catch (_) { /* folders are best-effort */ }
+        }
+        const where = isPrivate ? 'private' : 'public';
+        showToast(
+            result.exists
+                ? `Data repository "${repoName}" already exists — reusing it.`
+                : `Created ${where} data repository "${repoName}".`,
+            'success'
+        );
+    } catch (error) {
+        console.error('initializeGithubRepo failed:', error);
+        showToast('Could not initialize the data repository: ' + error.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig || 'Initialize Data Repository'; }
+    }
+}
+window.initializeGithubRepo = initializeGithubRepo;
 
 // ============================================================================
 // HISTORY
@@ -2656,7 +2699,7 @@ async function generateBulk() {
             ? (AIIntegration.getOllamaConfig().model || GitHubRunner.getConfig().model)
             : GitHubRunner.getConfig().model;
         const resumeText = buildResumeSourceText(profile);
-        const genOptsBase = { wantResume: true, wantCover: true, wantPortfolio: true, wantJobDetails: true, template: 'minimalist' };
+        const genOptsBase = { wantResume: true, wantCover: true, wantPortfolio: true, wantJobDetails: true, template: 'auto' };
 
         setMsg(`<p>⏳ Launching ${usable.length} parallel cloud runner(s) on GitHub…</p>`);
         const results = await Promise.allSettled(usable.map(async (job) => {
@@ -2866,6 +2909,22 @@ window.fetchJDFromURL = fetchJDFromURL;
 // AI PROVIDER SETTINGS UI (free, key-based, and custom BYO providers)
 // ============================================================================
 
+// Fill the Portfolio Template <select> with the 25 named styles (5 layout
+// families x 5 palettes), grouped by family, plus the per-profile Auto option.
+function populatePortfolioTemplates() {
+    const sel = document.getElementById('portfolioTemplate');
+    if (!sel || !window.PortfolioTemplates || !PortfolioTemplates.listStyles) return;
+    const current = sel.value || 'auto';
+    let html = '<option value="auto">Auto — unique colour per profile (recommended)</option>';
+    PortfolioTemplates.listStyles().forEach(g => {
+        html += `<optgroup label="${escHtml(g.group)}">`;
+        g.options.forEach(o => { html += `<option value="${escHtml(o.value)}">${escHtml(o.label)}</option>`; });
+        html += '</optgroup>';
+    });
+    sel.innerHTML = html;
+    if ([...sel.options].some(o => o.value === current)) sel.value = current;
+}
+
 function renderAISettings() {
     const container = document.getElementById('aiProvidersSettings');
     if (!container || !window.AIIntegration) return;
@@ -2902,7 +2961,7 @@ function renderAISettings() {
     const ghCfg = (window.GitHubRunner && GitHubRunner.getConfig) ? GitHubRunner.getConfig() : { owner: 'rdammala', repo: 'resume-engine-pro', model: 'llama3.2' };
     const hasTok = !!(window.GitHubRunner && GitHubRunner.hasToken());
     const tokenScopeUrl = 'https://github.com/settings/tokens?type=beta';
-    html += `<div class="ai-provider-card">
+    html += `<div class="ai-provider-card ai-provider-card--wide">
         <h4>${escHtml(AIIntegration.providers.ollama.name)} ${hasTok ? '✅' : ''}</h4>
         <p>Free &amp; automated — when you click <strong>Generate</strong>, the site triggers a GitHub Actions workflow that spins up a fresh cloud runner, installs Ollama, runs <strong>Llama 3</strong>, tailors your resume to the JD, commits the result, and <strong>self-destructs</strong>. No local server, $0 cost.</p>
         <p style="font-size:0.85rem;opacity:0.85;">One-time setup: create a <a href="${tokenScopeUrl}" target="_blank" rel="noopener">fine-grained GitHub token</a> scoped to <code>${escHtml(ghCfg.owner)}/${escHtml(ghCfg.repo)}</code> with <strong>Actions: Read &amp; write</strong> and <strong>Contents: Read &amp; write</strong> (or a classic token with <code>repo</code> + <code>workflow</code>). It is stored only in your browser.</p>
@@ -2931,7 +2990,7 @@ function renderAISettings() {
 
     // Custom / BYO OpenAI-compatible provider
     const cfg = AIIntegration.getCustomConfig();
-    html += `<div class="ai-provider-card">
+    html += `<div class="ai-provider-card ai-provider-card--wide">
         <h4>Custom / Your own AI provider ${cfg.endpoint ? '✅' : ''}</h4>
         <p>Use any OpenAI-compatible endpoint — e.g. OpenRouter, Together, Groq, LM Studio, or a local Ollama server.</p>
         <div class="form-group">

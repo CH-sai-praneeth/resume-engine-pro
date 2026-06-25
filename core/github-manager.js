@@ -78,7 +78,7 @@ const GitHubManager = {
     // REPOSITORY OPERATIONS
     // ========================================================================
     
-    async createDataRepository(repoName) {
+    async createDataRepository(repoName, isPrivate = true) {
         if (!this.isAuthenticated()) {
             return { success: false, error: 'Not authenticated' };
         }
@@ -110,7 +110,7 @@ const GitHubManager = {
                 body: JSON.stringify({
                     name: repoName,
                     description: 'Resume Engine Pro - Resume data, profiles, and generated files',
-                    private: true,
+                    private: isPrivate !== false,
                     has_wiki: false,
                     has_projects: false,
                     has_downloads: false

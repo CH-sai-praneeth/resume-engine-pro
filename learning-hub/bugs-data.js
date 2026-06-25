@@ -840,5 +840,35 @@ profile.education.map(edu =>
 ).join('')`,
         lesson: 'Test the data, not just the happy path: driving several genuinely different input shapes (arrays, comma-strings, raw text, objects, unicode) through the real generators is what exposes silent field-dropping and type assumptions that a single tidy fixture never would. When one builder handles a shape (objects) and a sibling builder does not, normalise the assumption in every renderer. And whenever a merge function hand-picks fields to copy, audit it for the ones it forgot - aiData.education fell through simply because it was never listed.',
         impact: 'Medium - AI-tailored resumes and portfolios now keep their education, the portfolio shows the tailored role instead of "Professional", and object-shaped education renders cleanly everywhere instead of leaking "[object Object]".'
+    },
+    {
+        id: 39,
+        title: 'Settings Menu: Underlined Link, Uneven AI-Provider Cards, and a Dead "Initialize Data Repository" Button',
+        severity: 'medium',
+        status: 'Fixed',
+        role: 'Frontend Developer',
+        fixTime: '55 min',
+        description: 'Three Settings-area defects surfaced together. (1) The gear-menu "Settings" link rendered underlined like a raw hyperlink. (2) The AI Providers cards were uneven and unprofessional - card heights changed with their content (the privacy note was tiny, the Ollama card was very tall), because the full-width privacy banner and the content-heavy Ollama/Custom cards were all dropped into the same auto-fit grid. (3) The Repository Access Private/Public radios appeared to do nothing: the "Initialize Data Repository" button called initializeGithubRepo(), a function that did not exist (ReferenceError), the only related handler (setupGitHubDataRepo) read a non-existent #dataRepoName input and never read the radio at all, and createDataRepository hardcoded private: true.',
+        rootCause: 'Distinct causes. (1) .settings-menu a never set text-decoration, so the browser default underline showed. (2) #aiProvidersSettings is a CSS grid; the privacy <p> and the long Ollama/Custom cards were ordinary grid cells, so they sized to their content and threw off the row rhythm. (3) The button onclick referenced a function that was never defined; the real (legacy) setup function targeted the wrong element id and ignored the visibility radio, and the GitHub API call always requested a private repo.',
+        resolution: 'Added text-decoration: none to the settings menu links. Reworked the AI Providers grid: the privacy note and the richer Ollama/Custom cards now span the full row (grid-column: 1 / -1), every card is a flex column with its helper <small> pinned to the bottom (margin-top: auto) so cards align cleanly, with a subtle header rule and hover. Implemented initializeGithubRepo(btn): it reads #githubDataRepo, reads the checked input[name="repoAccess"], and calls createDataRepository(repoName, isPrivate) - which now honours the flag (private: isPrivate !== false) - then initializes the folder structure, with success/error toasts and a busy state. The button passes (this).',
+        codeExample: `// (3) The button called a function that did not exist; now it works and
+// actually reads the Private/Public radio.
+async function initializeGithubRepo(btn) {
+  const repoName = (document.getElementById('githubDataRepo')?.value || '').trim()
+                   || 'resume-engine-data';
+  const access = document.querySelector('input[name="repoAccess"]:checked');
+  const isPrivate = !access || access.value !== 'public';
+  const result = await GitHubManager.createDataRepository(repoName, isPrivate);
+  // …toast success/exists/error…
+}
+window.initializeGithubRepo = initializeGithubRepo;
+
+/* (2) CSS: banner + heavy cards span the row; helper text pins to the bottom */
+.ai-providers-grid > .ai-keys-privacy,
+.ai-provider-card--wide { grid-column: 1 / -1; }
+.ai-provider-card { display: flex; flex-direction: column; }
+.ai-provider-card small { margin-top: auto; }`,
+        lesson: 'An inline onclick that names a function which does not exist fails silently from the user side (just a console ReferenceError) - controls wired this way must point at a verifiably-global function, and "does this even work?" usually means the handler is missing or mis-named. For card grids, keep full-width banners and content-heavy panels out of the uniform track (span the whole row) and pin per-card helper text to the bottom so unequal content still lines up. And a control is only "working" once its value is actually consumed end-to-end: the radio looked fine but nothing ever read it.',
+        impact: 'Medium - the Settings menu looks clean (no underline), the AI Providers section is visually consistent and professional, and the Repository Access radios now genuinely control whether the created data repo is private or public.'
     }
 ];console.log("BUGS array loaded with", window.BUGS.length, "bugs");

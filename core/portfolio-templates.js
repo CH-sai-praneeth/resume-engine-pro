@@ -35,13 +35,55 @@ const PortfolioTemplates = {
         }
     ],
     
+    // Human-readable names for each template's 5 palettes (same order as the
+    // `pals` arrays inside the generate* functions). Used to build the picker.
+    _paletteNames: {
+        minimalist: ['Blue', 'Teal', 'Violet', 'Orange', 'Rose'],
+        executive: ['Navy & Gold', 'Charcoal & Bronze', 'Forest & Gold', 'Burgundy & Gold', 'Royal & Silver'],
+        creative: ['Pink Sunburst', 'Purple Pop', 'Mint Fresh', 'Sunset', 'Ocean Violet'],
+        tech: ['Neon Green', 'Cyan', 'Amber', 'Magenta', 'Lime'],
+        startup: ['Indigo', 'Emerald', 'Rose', 'Sky', 'Amber']
+    },
+
+    _families: [
+        ['minimalist', 'Minimalist', '📄'],
+        ['executive', 'Executive', '🏛️'],
+        ['creative', 'Creative', '🎨'],
+        ['tech', 'Tech', '💻'],
+        ['startup', 'Startup', '🚀']
+    ],
+
+    // Grouped option list for the Portfolio Template <select> (25 named styles).
+    listStyles() {
+        return this._families.map(([id, label]) => ({
+            group: label,
+            options: (this._paletteNames[id] || []).map((n, i) => ({
+                value: id + ':' + i,
+                label: label + ' — ' + n
+            }))
+        }));
+    },
+
     generatePortfolio(profile, template = 'minimalist', colorScheme = 0) {
-        const templateFn = this[`generate${template.charAt(0).toUpperCase()}${template.slice(1)}`];
-        if (!templateFn) {
-            throw new Error(`Unknown template: ${template}`);
+        let tpl = template;
+        let scheme = colorScheme;
+        // "family:index" picks an exact template + palette (from the dropdown).
+        if (typeof template === 'string' && template.indexOf(':') !== -1) {
+            const parts = template.split(':');
+            tpl = parts[0];
+            scheme = parseInt(parts[1], 10);
+        } else if (template === 'auto') {
+            // Full auto: derive BOTH the family and the palette from the profile
+            // (salted so they vary independently), for unique-per-person variety.
+            const fams = this._families.map(f => f[0]);
+            tpl = fams[this._schemeIndex(profile, 'family', fams.length)];
+            scheme = 'auto';
         }
-        
-        return templateFn.call(this, profile, colorScheme);
+        const templateFn = this[`generate${tpl.charAt(0).toUpperCase()}${tpl.slice(1)}`];
+        if (!templateFn) {
+            throw new Error(`Unknown template: ${tpl}`);
+        }
+        return templateFn.call(this, profile, scheme);
     },
 
     // ------------------------------------------------------------------
@@ -142,7 +184,8 @@ const PortfolioTemplates = {
         if (typeof scheme === 'number' && isFinite(scheme)) {
             return ((Math.floor(scheme) % count) + count) % count;
         }
-        const s = String((profile && (profile.name || profile.displayName || '')) + '|' + ((profile && profile.title) || ''));
+        const salt = (typeof scheme === 'string') ? scheme : '';
+        const s = String((profile && (profile.name || profile.displayName || '')) + '|' + ((profile && profile.title) || '') + '|' + salt);
         let h = 0;
         for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
         return h % count;

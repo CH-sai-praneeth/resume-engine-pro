@@ -472,11 +472,7 @@
                             <div class="form-group">
                                 <label>Portfolio Template:</label>
                                 <select id="portfolioTemplate">
-                                    <option value="minimalist">Minimalist (Teal + Dark)</option>
-                                    <option value="executive">Executive (Navy + Gold)</option>
-                                    <option value="creative">Creative (Purple + Magenta)</option>
-                                    <option value="tech">Tech (Cyan + Black)</option>
-                                    <option value="startup">Startup (Rose + White)</option>
+                                    <option value="auto">Auto — unique colour per profile (recommended)</option>
                                 </select>
                             </div>
 
@@ -785,7 +781,7 @@
                             <input type="radio" name="repoAccess" value="public" /> Public (resumes visible to all)
                         </label>
                     </div>
-                    <button class="btn btn-secondary" onclick="initializeGithubRepo()">Initialize Data Repository</button>
+                    <button class="btn btn-secondary" onclick="initializeGithubRepo(this)">Initialize Data Repository</button>
                 </div>
 
                 <!-- AI Providers -->

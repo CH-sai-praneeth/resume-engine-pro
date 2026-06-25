@@ -196,6 +196,36 @@ const GitHubManager = {
             return { success: false, error: error.message };
         }
     },
+
+    // Read a text file from one of the user's repos (used to restore a backup
+    // saved with pushFile). Decodes the Contents API's UTF-8 base64 payload.
+    async getFile(repoName, path) {
+        if (!this.isAuthenticated()) {
+            return { success: false, error: 'Not authenticated' };
+        }
+        try {
+            const res = await fetch(
+                `${this.baseUrl}/repos/${this.user.login}/${repoName}/contents/${path}`,
+                {
+                    headers: {
+                        'Authorization': `token ${this.token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                }
+            );
+            if (res.status === 404) {
+                return { success: false, notFound: true, error: 'No backup found in that repository yet.' };
+            }
+            if (!res.ok) {
+                return { success: false, error: `GitHub returned HTTP ${res.status}` };
+            }
+            const json = await res.json();
+            const content = decodeURIComponent(escape(atob(String(json.content || '').replace(/\n/g, ''))));
+            return { success: true, content, sha: json.sha };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    },
     
     async deleteFile(repoName, path, message = 'Delete from Resume Engine Pro') {
         if (!this.isAuthenticated()) {

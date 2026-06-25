@@ -1126,6 +1126,80 @@ function restoreEverything() {
     input.click();
 }
 
+// Save a full backup to the user's GitHub data repository (their own account),
+// so it survives clearing this browser and can be restored on any device. The
+// repo's visibility follows the Private/Public radio in GitHub Configuration.
+async function saveDataToGitHub(btn) {
+    if (!(window.GitHubManager && GitHubManager.isAuthenticated && GitHubManager.isAuthenticated())) {
+        showToast('Please sign in with GitHub first', 'warning');
+        return;
+    }
+    const repoName = (document.getElementById('githubDataRepo')?.value || '').trim() || 'resume-engine-data';
+    const access = document.querySelector('input[name="repoAccess"]:checked');
+    const isPrivate = !access || access.value !== 'public';
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+        // Ensure the data repo exists (idempotent — reuses it if already there).
+        const repo = await GitHubManager.createDataRepository(repoName, isPrivate);
+        if (!repo || repo.success === false) {
+            throw new Error((repo && repo.error) || 'Could not access the data repository');
+        }
+        const backup = StorageManager.exportAll();
+        const content = JSON.stringify(backup, null, 2);
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+
+        // latest.json = quick restore target; timestamped copy = versioned history.
+        const r = await GitHubManager.pushFile(repoName, 'backups/latest.json', content, 'Update Resume Engine Pro backup');
+        if (!r || r.success === false) throw new Error((r && r.error) || 'Could not write the backup');
+        try { await GitHubManager.pushFile(repoName, `backups/backup_${stamp}.json`, content, 'Add Resume Engine Pro backup ' + stamp); } catch (_) { /* history copy is best-effort */ }
+
+        showToast(`Saved ${backup.keyCount} data sets to your ${isPrivate ? 'private' : 'public'} GitHub repo "${repoName}".`, 'success');
+    } catch (error) {
+        console.error('saveDataToGitHub failed:', error);
+        showToast('Could not save to GitHub: ' + error.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig || '☁️ Save to GitHub'; }
+    }
+}
+window.saveDataToGitHub = saveDataToGitHub;
+
+// Restore the latest backup stored in the user's GitHub data repository.
+async function restoreDataFromGitHub(btn) {
+    if (!(window.GitHubManager && GitHubManager.isAuthenticated && GitHubManager.isAuthenticated())) {
+        showToast('Please sign in with GitHub first', 'warning');
+        return;
+    }
+    const repoName = (document.getElementById('githubDataRepo')?.value || '').trim() || 'resume-engine-data';
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+    try {
+        const f = await GitHubManager.getFile(repoName, 'backups/latest.json');
+        if (!f || f.success === false) {
+            throw new Error(f && f.notFound
+                ? 'No backup found in that repository yet — use "Save to GitHub" first.'
+                : (f && f.error) || 'Could not read the backup');
+        }
+        let backup;
+        try { backup = JSON.parse(f.content); } catch { throw new Error('The stored backup is not valid JSON.'); }
+        if (!confirm('Restore will REPLACE all current data in this browser (profiles, history, applications, settings) with the backup saved in GitHub. Continue?')) {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+            return;
+        }
+        const result = StorageManager.importAll(backup, { clearFirst: true });
+        if (!result.success) throw new Error(result.error || 'restore failed');
+        showToast(`Restored ${result.restored} data sets from GitHub. Reloading…`, 'success');
+        setTimeout(() => window.location.reload(), 1200);
+    } catch (error) {
+        console.error('restoreDataFromGitHub failed:', error);
+        showToast('Could not restore from GitHub: ' + error.message, 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = orig || '☁️ Restore from GitHub'; }
+    }
+}
+window.restoreDataFromGitHub = restoreDataFromGitHub;
+
 // Close settings menu when clicking outside
 window.addEventListener('click', (e) => {
     const settingsBtn = document.getElementById('settingsBtn');

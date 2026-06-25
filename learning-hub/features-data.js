@@ -221,6 +221,34 @@ generateStartup(profile, scheme) {
 }`,
         lesson: 'A picker with no effect is worse than no picker. Separate content from presentation: escape and assemble the content once, then let each theme — and each palette — vary only the CSS, so adding a template or colourway can never drop a field or reopen an injection hole. Derive per-entity variation from a stable hash (not randomness) so the same profile always renders identically, keeping re-generated and re-published sites consistent. And treat any user text rendered into a public page as untrusted, escaping it at the boundary even when it is "your own" data.',
         impact: 'Medium — five templates x five palettes give 25 distinct looks, every profile auto-gets its own stable colour scheme, and every published portfolio is safe from broken layout or HTML/script injection.'
+    },
+    {
+        id: 7,
+        title: 'Choose Where Your Data Lives: Local Download or Save to Your GitHub Account',
+        category: 'Data / Backup',
+        status: 'Shipped',
+        role: 'Front-End / Data',
+        effort: '50 min',
+        summary: 'Backup & Restore now offers two destinations: download a JSON file locally, or save it to a backups/ folder in your own GitHub data repository so it survives clearing this browser and can be restored on any device. Restore works from either source.',
+        motivation: 'All app data (profiles, history, applications, settings) lived only in browser localStorage, so clearing site data wiped everything and there was no cross-device option. The "data repository" existed but nothing actually wrote the user data into it.',
+        solution: 'Reused StorageManager.exportAll()/importAll() (the existing full-backup format) and GitHubManager.pushFile() (user token, UTF-8-safe base64 + SHA overwrite). saveDataToGitHub() ensures the data repo exists (idempotent, honouring the Private/Public radio), then writes backups/latest.json plus a timestamped backups/backup_<stamp>.json history copy. Added GitHubManager.getFile() to read+decode the Contents API payload; restoreDataFromGitHub() fetches latest.json, confirms, and imports. The Settings UI now presents two clear rows — Back up (Download / Save to GitHub) and Restore (From file / From GitHub).',
+        codeExample: `// Save a full backup to the user's OWN GitHub data repo (any device restore).
+async function saveDataToGitHub(btn) {
+  const repoName = (document.getElementById('githubDataRepo')?.value || '').trim()
+                   || 'resume-engine-data';
+  const access = document.querySelector('input[name="repoAccess"]:checked');
+  const isPrivate = !access || access.value !== 'public';
+  await GitHubManager.createDataRepository(repoName, isPrivate);   // idempotent
+  const content = JSON.stringify(StorageManager.exportAll(), null, 2);
+  await GitHubManager.pushFile(repoName, 'backups/latest.json', content, 'Update backup');
+  await GitHubManager.pushFile(repoName, 'backups/backup_' + stamp + '.json', content, 'History');
+}
+
+// Restore reads it straight back and imports (replacing local data).
+const f = await GitHubManager.getFile(repoName, 'backups/latest.json');
+StorageManager.importAll(JSON.parse(f.content), { clearFirst: true });`,
+        lesson: 'When the only copy of user data is per-browser, give a real choice of durability: a local file for offline control and a cloud copy (in their own account, not yours) for cross-device recovery. Build it from primitives you already have — a stable export/import format and an idempotent pushFile — instead of a new sync engine. Keep both a stable latest.json (easy restore) and timestamped copies (history), and always confirm before a destructive replace.',
+        impact: 'Medium — users can now keep their data safe their way: a downloaded file, or their own private/public GitHub repo that restores on any device, instead of being trapped in one browser.'
     }
 ];
 

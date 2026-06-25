@@ -796,21 +796,39 @@
 
                 <!-- API Key Management -->
                 <div class="settings-section">
-                    <h3> API Key Management</h3>
+                    <h3> Data Backup &amp; Restore</h3>
+                    <p style="color:var(--text-secondary); font-size:0.9rem;">Your data lives only in this browser. Choose how to keep it safe — download a file locally, or save it to your own GitHub account so you can restore it on any device.</p>
+
                     <div class="form-group">
+                        <label>Back up your data</label>
+                        <div class="button-group">
+                            <button class="btn btn-success" onclick="backupEverything()" title="Download a single timestamped JSON containing all profiles, history, applications, contacts, and settings">⬇️ Download backup</button>
+                            <button class="btn btn-primary" onclick="saveDataToGitHub(this)" title="Save a backup to a backups/ folder in your GitHub data repository">☁️ Save to GitHub</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Restore your data</label>
+                        <div class="button-group">
+                            <button class="btn btn-secondary" onclick="restoreEverything()" title="Restore all data from a previously downloaded backup JSON file">⬆️ Restore from file</button>
+                            <button class="btn btn-secondary" onclick="restoreDataFromGitHub(this)" title="Restore the latest backup saved in your GitHub data repository">☁️ Restore from GitHub</button>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button class="btn btn-danger" onclick="clearAllData()">Clear All Data</button>
+                    </div>
+
+                    <p style="margin-top:0.75rem; color:var(--text-secondary); font-size:0.85rem;">
+                        <strong>Back up before clearing browsing data.</strong> Restoring replaces the current data in this browser with the backup's contents.
+                        Saving to GitHub uses the data repository named above (visibility follows the Private/Public choice) and keeps a timestamped history plus a <code>latest.json</code>.
+                    </p>
+
+                    <div class="form-group" style="margin-top:1rem;">
                         <label>
                             <input type="checkbox" id="encryptKeys" checked /> Encrypt API keys with master password
                         </label>
                     </div>
-                    <div class="button-group">
-                        <button class="btn btn-success" onclick="backupEverything()" title="Download a single timestamped JSON containing all profiles, history, applications, contacts, and settings">⬇️ Backup Everything</button>
-                        <button class="btn btn-secondary" onclick="restoreEverything()" title="Restore all data from a previously saved backup JSON file">⬆️ Restore Everything</button>
-                        <button class="btn btn-danger" onclick="clearAllData()">Clear All Data</button>
-                    </div>
-                    <p style="margin-top:0.75rem; color:var(--text-secondary); font-size:0.85rem;">
-                        All data lives only in this browser. <strong>Back up before clearing browsing data.</strong>
-                        Restore replaces current data with the backup file's contents.
-                    </p>
                 </div>
             </div>
         </section>

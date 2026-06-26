@@ -1,0 +1,71 @@
+{
+  "job_title": "AI Solutions & Automation Developer",
+  "company": "Fisher Phillips",
+  "summary": "Designs, develops and maintains AI Agents using firm's AI agent platform and orchestration tools, integrating with internal and external applications via APIs to support agent workflows and process automation; builds and supports process automations using Power Automate, Zapier and Workato to streamline routine tasks and cross-system activities; collaborates with stakeholders to gather requirements, define outcomes and iteratively improve solutions.",
+  "skills": [
+    "API integration",
+    "automation logic",
+    "responsible AI development practices",
+    "Power Automate",
+    "Zapier",
+    "Workato",
+    "cloud-based platforms",
+    "SaaS integrations",
+    "data privacy",
+    "security",
+    "access control",
+    "JavaScript",
+    "TypeScript",
+    "Python",
+    "secure programming",
+    "AI/ML development",
+    "process automation tools",
+    "cloud infrastructure components",
+    "legal-specific applications",
+    "software developer experience"
+  ],
+  "experience": [
+    {
+      "role": "AI Solutions & Automation Developer",
+      "company": "Fisher Phillips",
+      "location": "Atlanta, GA",
+      "dates": "Full-time, Hybrid",
+      "details": [
+        "Designed and developed AI Agent using firm's platform and orchestration tools; integrated with internal application via API to support agent workflow",
+        "Built and supported process automation using Power Automate, reducing manual toil by 150 hours/quarter",
+        "Collaborated with stakeholders to gather requirements and define outcomes for agent development",
+        "Automated data processing tasks using Python and secure programming practices",
+        "Implemented data privacy and security measures in agent workflow"
+      ]
+    },
+    {
+      "role": "AI Solutions & Automation Developer",
+      "company": "Fisher Phillips",
+      "location": "Atlanta, GA",
+      "dates": "Full-time, Hybrid",
+      "details": [
+        "Developed and maintained AI Agent using firm's platform and orchestration tools; integrated with external application via API to support agent workflow",
+        "Built and supported process automation using Zapier, reducing manual toil by 100 hours/quarter",
+        "Collaborated with stakeholders to gather requirements and define outcomes for agent development",
+        "Automated data processing tasks using TypeScript and secure programming practices",
+        "Implemented data privacy and security measures in agent workflow"
+      ]
+    },
+    {
+      "role": "AI Solutions & Automation Developer",
+      "company": "Fisher Phillips",
+      "location": "Atlanta, GA",
+      "dates": "Full-time, Hybrid",
+      "details": [
+        "Designed and developed AI Agent using firm's platform and orchestration tools; integrated with internal application via API to support agent workflow",
+        "Built and supported process automation using Workato, reducing manual toil by 200 hours/quarter",
+        "Collaborated with stakeholders to gather requirements and define outcomes for agent development",
+        "Automated data processing tasks using Python and secure programming practices",
+        "Implemented data privacy and security measures in agent workflow"
+      ]
+    }
+  ],
+  "education": [
+    "Bachelor's degree in Information Technology, Fisher Phillips"
+  ]
+}
